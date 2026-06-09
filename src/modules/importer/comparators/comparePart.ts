@@ -68,6 +68,10 @@ const arrayContentsEqual = (a: unknown, b: unknown): boolean => {
 };
 
 const valuesEqual = (fieldName: string, oldValue: unknown, newValue: unknown): boolean => {
+  if (fieldName === 'stock_quantity' && (newValue === null || newValue === undefined)) {
+    return true;
+  }
+
   if (oldValue === undefined) {
     return true;
   }
@@ -88,12 +92,20 @@ const valuesEqual = (fieldName: string, oldValue: unknown, newValue: unknown): b
     return true;
   }
 
-  if (typeof oldValue === 'string' || typeof newValue === 'string') {
-    return stringsEqual(oldValue, newValue);
+  if (fieldName === 'id_int' && oldValue !== null && newValue !== null) {
+    return String(oldValue).trim() === String(newValue).trim();
+  }
+
+  if (fieldName === 'price' && oldValue !== null && newValue !== null) {
+    return Number(oldValue) === Number(newValue);
   }
 
   if (Array.isArray(oldValue) || Array.isArray(newValue)) {
     return arrayContentsEqual(oldValue, newValue);
+  }
+
+  if (typeof oldValue === 'string' || typeof newValue === 'string') {
+    return stringsEqual(oldValue, newValue);
   }
 
   if (typeof oldValue === 'number' && typeof newValue === 'number') {

@@ -25,6 +25,12 @@ interface PreviewItem {
   warnings: string[];
 }
 
+interface CompareDebugUpdate {
+  row: number;
+  matchedBy: MatchSource;
+  totalChanges: number;
+  changes: PartChange[];
+}
 
 export default function TestImportPage() {
   const [sheetName, setSheetName] = useState<string>('');
@@ -59,6 +65,7 @@ export default function TestImportPage() {
   const [persistProgress, setPersistProgress] = useState<number>(0);
   const [existingPartsCount, setExistingPartsCount] = useState<number>(0);
   const [storeId, setStoreId] = useState<string>('');
+  const [compareDebugUpdates, setCompareDebugUpdates] = useState<CompareDebugUpdate[]>([]);
 
   const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -83,6 +90,7 @@ export default function TestImportPage() {
     setChangedUpdatesCount(0);
     setUnchangedUpdatesCount(0);
     setMatchingStats(null);
+    setCompareDebugUpdates([]);
 
     try {
       const arrayBuffer = await file.arrayBuffer();
@@ -115,6 +123,7 @@ export default function TestImportPage() {
       setUnchangedUpdatesCount(result.summary.unchangedUpdates);
 
       setPreview(enrichedPreview as PreviewItem[]);
+      setCompareDebugUpdates(result.compareDebugUpdates as CompareDebugUpdate[]);
       setExecutionPlan(result.executionPlan);
       setPersistResult(null);
       setPersistError(null);
@@ -321,6 +330,13 @@ export default function TestImportPage() {
           )}
         </div>
       )}
+
+      <div style={{ marginTop: 12 }}>
+        <h2>Compare Debug (first 10 updates)</h2>
+        <pre style={{ maxHeight: 500, overflow: 'auto', background: '#fff3cd', padding: 12 }}>
+{JSON.stringify(compareDebugUpdates, null, 2)}
+        </pre>
+      </div>
 
       <div style={{ marginTop: 12 }}>
         <h2>Preview (first 20)</h2>

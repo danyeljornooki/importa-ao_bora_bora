@@ -19,6 +19,7 @@ import type { ImportPlan } from '../modules/importer/planner/buildImportPlan';
 import type { ExecutionPlan } from '../planners/buildExecutionPlan';
 import type { ParsedExcel } from '../modules/importer/parseExcel';
 import type { ExistingInventoryItem } from '../modules/importer/persistence/loadExistingPartsFromSupabase';
+import type { PartChange } from '../modules/importer/comparators/comparePart';
 
 export interface RunImportOptions {
   storeId: string | number;
@@ -48,16 +49,76 @@ export interface MatchingStats {
     mlb_id: number;
     title: number;
   };
-  failedMatches: FailedMatch[];
+  failedMatches?: FailedMatch[];
   topFailureReasons?: { reason: string; count: number }[];
   topMissingCodes?: { code: string; count: number }[];
   failedByIdentifierCount?: { id_int: number; mlb_id: number; code: number };
-  existingPartsIdentifierStats?: ExistingPartsIdentifierStats;
+  existingPartsIdentifierStats?: any;
   topMissExamples?: FailedMatch[];
+}
+
+export type LogSeverity = 'ERROR' | 'WARNING' | 'INFO';
+
+export interface LogEntry {
+  severity: LogSeverity;
+  message: string;
+  row?: number;
+  code?: string;
+  details?: Record<string, unknown>;
+}
+
+export interface CompactChange {
+  field: string;
+  old: unknown;
+  new: unknown;
+}
+
+export interface CompactAttentionItem {
+  row: number;
+  code?: string;
+  title?: string;
+  reason: string;
+  severity: LogSeverity;
+  matched_by?: string;
+  matched_code?: string;
+  confidence?: number;
+  changes?: CompactChange[];
+}
+
+export interface QualityStats {
+  sem_descricao: number;
+  sem_imagem: number;
+  sem_localizacao: number;
+  sem_mlb: number;
+  possiveis_duplicadas: number;
+  estoque_zerado: number;
+}
+
+export interface ImportSummary {
+  total: number;
+  criadas: number;
+  atualizadas: number;
+  sem_alteracao: number;
+  conflitos: number;
+  invalidas: number;
+  falhas: number;
+  duracao_ms: number;
+  duracao: string;
 }
 
 export interface RunImportResult {
   sheetName: string;
+  resumo: ImportSummary;
+  qualidade: QualityStats;
+  logs: LogEntry[];
+  atencao: CompactAttentionItem[];
+  compareDebugUpdates: Array<{
+    row: number;
+    matchedBy: string | null;
+    totalChanges: number;
+    changes: PartChange[];
+  }>;
+  // Mantendo para compatibilidade
   totalRows: number;
   previewItems: any[];
   importPlan: ImportPlan;
@@ -74,7 +135,15 @@ export interface RunImportResult {
     skipped: number;
     executable: number;
   };
-  matchingStats?: MatchingStats;
+  matchingStats?: {
+    totalRows: number;
+    existingPartsCount: number;
+    create: number;
+    update: number;
+    conflict: number;
+    invalid: number;
+    matchedBy: { id_int: number; code: number; mlb_id: number; title: number };
+  };
 }
 
 interface RowState {
@@ -130,6 +199,31 @@ const buildFailureAnalytics = (failed: FailedMatch[]) => {
   };
 };
 
+const formatDuration = (ms: number): string => {
+  const seconds = Math.floor(ms / 1000);
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+  return `${minutes}m ${remainingSeconds}s`;
+};
+
+const analyzeQuality = (part: PartCanonical): { [K in keyof QualityStats]: boolean } => {
+  const hasNoDescription = !part.description || part.description.trim() === '';
+  const hasNoImage = !part.image_urls || part.image_urls.length === 0;
+  const hasNoLocation = !part.location || part.location.trim() === '';
+  const hasNoMlb = (!part.mlb_ids || part.mlb_ids.length === 0) && !part.id_string;
+  const hasZeroStock = part.stock_quantity === 0;
+  
+  return {
+    sem_descricao: hasNoDescription,
+    sem_imagem: hasNoImage,
+    sem_localizacao: hasNoLocation,
+    sem_mlb: hasNoMlb,
+    possiveis_duplicadas: false, // Será marcado separadamente
+    estoque_zerado: hasZeroStock,
+  };
+};
+
 export const runImport = async (
   fileBuffer: ArrayBuffer,
   options: RunImportOptions
@@ -138,6 +232,7 @@ export const runImport = async (
     throw new Error('storeId obrigatorio para runImport');
   }
 
+  const startTime = Date.now();
   const debugMatching = options.debugMatching === true;
   const storeId = options.storeId;
 
@@ -191,6 +286,28 @@ export const runImport = async (
       }
     : null;
 
+  // Novas estruturas para o output compacto
+  const logs: LogEntry[] = [];
+  const atencao: CompactAttentionItem[] = [];
+  const qualityStats: QualityStats = {
+    sem_descricao: 0,
+    sem_imagem: 0,
+    sem_localizacao: 0,
+    sem_mlb: 0,
+    possiveis_duplicadas: 0,
+    estoque_zerado: 0,
+  };
+
+  const counters = {
+    total: parsed.rows.length,
+    criadas: 0,
+    atualizadas: 0,
+    sem_alteracao: 0,
+    conflitos: 0,
+    invalidas: 0,
+    falhas: 0,
+  };
+
   for (const rowState of rows) {
     if (!rowState.normalized || rowState.error) {
       previewItems.push({
@@ -204,12 +321,27 @@ export const runImport = async (
         warnings: [],
         reason: 'linha invalida',
       });
+      counters.invalidas += 1;
       if (matchingTracking) matchingTracking.invalid += 1;
+
+      logs.push({
+        severity: 'ERROR',
+        message: `Linha ${rowState.row}: ${rowState.error ?? 'linha inválida'}`,
+        row: rowState.row,
+      });
+
+      atencao.push({
+        row: rowState.row,
+        reason: rowState.error ?? 'linha inválida',
+        severity: 'ERROR',
+      });
+
       continue;
     }
 
     const normalized = rowState.normalized;
     const validation = rowState.validation ?? validatePart(normalized);
+    const qualityFlags = analyzeQuality(normalized);
 
     if (!validation.valid) {
       previewItems.push({
@@ -224,7 +356,24 @@ export const runImport = async (
         warnings: validation.warnings,
         reason: 'linha invalida',
       });
+      counters.invalidas += 1;
       if (matchingTracking) matchingTracking.invalid += 1;
+
+      logs.push({
+        severity: 'ERROR',
+        message: `Linha ${rowState.row}: ${validation.errors.join(', ')}`,
+        row: rowState.row,
+        code: normalized.code ?? undefined,
+      });
+
+      atencao.push({
+        row: rowState.row,
+        code: normalized.code ?? undefined,
+        title: normalized.title ?? undefined,
+        reason: validation.errors.join(', '),
+        severity: 'ERROR',
+      });
+
       continue;
     }
 
@@ -236,6 +385,13 @@ export const runImport = async (
       else if (match.matchedBy === 'mlb_id') matchingTracking.matchedBy.mlb_id += 1;
       else if (match.matchedBy === 'title') matchingTracking.matchedBy.title += 1;
     }
+
+    // Atualizar estatísticas de qualidade
+    if (qualityFlags.sem_descricao) qualityStats.sem_descricao += 1;
+    if (qualityFlags.sem_imagem) qualityStats.sem_imagem += 1;
+    if (qualityFlags.sem_localizacao) qualityStats.sem_localizacao += 1;
+    if (qualityFlags.sem_mlb) qualityStats.sem_mlb += 1;
+    if (qualityFlags.estoque_zerado) qualityStats.estoque_zerado += 1;
 
     if (match.action === 'update' && match.existingPart) {
       const comparison = comparePart(normalized, match.existingPart as any);
@@ -258,11 +414,45 @@ export const runImport = async (
         warnings: [...validation.warnings, ...match.warnings],
         reason: comparison.changed ? 'peca existente com alteracoes' : 'sem alteracoes',
       });
+
+      if (comparison.changed) {
+        counters.atualizadas += 1;
+        const compactChanges = comparison.changes.map((c) => ({ field: c.field, old: c.oldValue, new: c.newValue }));
+        
+        logs.push({
+          severity: 'INFO',
+          message: `Linha ${rowState.row}: Peça ${normalized.code} atualizada (${comparison.totalChanges} alterações)`,
+          row: rowState.row,
+          code: normalized.code ?? undefined,
+          details: { changes: compactChanges },
+        });
+
+        atencao.push({
+          row: rowState.row,
+          code: normalized.code ?? undefined,
+          title: normalized.title ?? undefined,
+          reason: 'peça atualizada',
+          severity: 'INFO',
+          matched_by: match.matchedBy ?? undefined,
+          changes: compactChanges,
+        });
+      } else {
+        counters.sem_alteracao += 1;
+        logs.push({
+          severity: 'INFO',
+          message: `Linha ${rowState.row}: Peça ${normalized.code} sem alterações`,
+          row: rowState.row,
+          code: normalized.code ?? undefined,
+        });
+      }
       continue;
     }
 
     if (match.action === 'conflict') {
       if (matchingTracking) matchingTracking.conflict += 1;
+      counters.conflitos += 1;
+      qualityStats.possiveis_duplicadas += 1;
+
       previewItems.push({
         row: rowState.row,
         valid: true,
@@ -278,6 +468,25 @@ export const runImport = async (
         warnings: [...validation.warnings, ...match.warnings],
         reason: 'possivel peca duplicada',
       });
+
+      logs.push({
+        severity: 'WARNING',
+        message: `Linha ${rowState.row}: Possível duplicata para ${normalized.code}`,
+        row: rowState.row,
+        code: normalized.code ?? undefined,
+      });
+
+      atencao.push({
+        row: rowState.row,
+        code: normalized.code ?? undefined,
+        title: normalized.title ?? undefined,
+        reason: 'possível peça duplicada',
+        severity: 'WARNING',
+        matched_by: match.matchedBy ?? undefined,
+        matched_code: match.existingPart?.code ?? undefined,
+        confidence: match.confidence,
+      });
+
       continue;
     }
 
@@ -293,6 +502,7 @@ export const runImport = async (
         });
       }
     }
+    counters.criadas += 1;
 
     previewItems.push({
       row: rowState.row,
@@ -308,6 +518,32 @@ export const runImport = async (
       warnings: validation.warnings,
       reason: 'nova peca',
     });
+
+    const qualityWarnings: string[] = [];
+    if (qualityFlags.sem_descricao) qualityWarnings.push('sem descrição');
+    if (qualityFlags.sem_imagem) qualityWarnings.push('sem imagem');
+    if (qualityFlags.sem_localizacao) qualityWarnings.push('sem localização');
+    if (qualityFlags.sem_mlb) qualityWarnings.push('sem MLB');
+    if (qualityFlags.estoque_zerado) qualityWarnings.push('estoque zerado');
+
+    const severity = qualityWarnings.length > 0 ? 'WARNING' : 'INFO';
+
+    logs.push({
+      severity,
+      message: `Linha ${rowState.row}: Peça ${normalized.code} criada${qualityWarnings.length > 0 ? ` (${qualityWarnings.join(', ')})` : ''}`,
+      row: rowState.row,
+      code: normalized.code ?? undefined,
+    });
+
+    if (qualityWarnings.length > 0) {
+      atencao.push({
+        row: rowState.row,
+        code: normalized.code ?? undefined,
+        title: normalized.title ?? undefined,
+        reason: `nova peça com avisos: ${qualityWarnings.join(', ')}`,
+        severity: 'WARNING',
+      });
+    }
   }
 
   const importPlan = buildImportPlan(previewItems as any);
@@ -327,8 +563,29 @@ export const runImport = async (
   const skipped = importPlan.summary.skipped;
   const executable = executionPlan.summary.executable;
 
+  const endTime = Date.now();
+  const durationMs = endTime - startTime;
+
   const result: RunImportResult = {
     sheetName: parsed.sheetName,
+    resumo: {
+      ...counters,
+      duracao_ms: durationMs,
+      duracao: formatDuration(durationMs),
+    },
+    qualidade: qualityStats,
+    logs,
+    atencao: atencao.slice(0, 20),
+    compareDebugUpdates: previewItems
+      .filter((item) => item.action === 'update')
+      .slice(0, 10)
+      .map((item) => ({
+        row: item.row,
+        matchedBy: item.matchedBy ?? null,
+        totalChanges: item.totalChanges,
+        changes: item.changes,
+      })),
+    // Mantendo para compatibilidade
     totalRows,
     previewItems: previewItems.slice(0, 20).map((p) => ({ ...p })),
     importPlan,
@@ -352,7 +609,7 @@ export const runImport = async (
       ...matchingTracking,
       existingPartsIdentifierStats,
       ...buildFailureAnalytics(matchingTracking.failedMatches),
-    };
+    } as MatchingStats;
   }
 
   return result;
