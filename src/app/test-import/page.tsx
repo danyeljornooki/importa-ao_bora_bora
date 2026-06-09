@@ -7,7 +7,8 @@ import type { MatchAction, MatchSource } from '../../modules/importer/matchers/m
 import type { PartChange } from '../../modules/importer/comparators/comparePart';
 import type { MatchingStats } from '../../services/importEngine';
 import type { ExecutionPlan } from '../../planners/buildExecutionPlan';
-import { persistExecutionPlan } from '../../modules/importer/persistence/persistExecutionPlan';
+import { persistExecutionPlan } from '../../core/importer/execution/persistExecutionPlan';
+import { supabaseInventoryAdapter } from '../../adapters/supabase/supabaseInventoryAdapter';
 
 interface PreviewItem {
   row: number;
@@ -94,8 +95,12 @@ export default function TestImportPage() {
 
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const { runImport } = await import('../../services/importEngine');
-      const result = await runImport(arrayBuffer, { storeId: storeId.trim(), debugMatching: true });
+      const { runImport } = await import('../../engine/runImport');
+      const result = await runImport(arrayBuffer, {
+        storeId: storeId.trim(),
+        adapter: supabaseInventoryAdapter,
+        debugMatching: true,
+      });
 
       setSheetName(result.sheetName);
       setRowsCount(result.totalRows);
@@ -207,7 +212,7 @@ export default function TestImportPage() {
               setPersistLoading(true);
               setPersistProgress(0);
               try {
-                const result = await persistExecutionPlan(executionPlan, {
+                const result = await persistExecutionPlan(executionPlan, supabaseInventoryAdapter, {
                   onProgress: (progress) => setPersistProgress(progress),
                 });
                 setPersistResult(result);

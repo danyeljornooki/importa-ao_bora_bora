@@ -1,11 +1,11 @@
 'use client'
 
 import React, { useEffect, useState } from 'react';
-import { matchPart } from '../../../modules/importer/matchers/matchPart';
-import { buildInventoryIndex } from '../../../modules/importer/matching/buildInventoryIndex';
-import { comparePart } from '../../../modules/importer/comparators/comparePart';
+import { matchPart } from '../../../core/importer/matching/matchPart';
+import { buildInventoryIndex } from '../../../core/importer/matching/buildInventoryIndex';
+import { comparePart } from '../../../core/importer/compare/comparePart';
 import type { PartCanonical } from '../../../modules/importer/schemas/part.schema';
-import type { ExistingInventoryItem } from '../../../modules/importer/persistence/loadExistingPartsFromSupabase';
+import type { ExistingInventoryItem } from '../../../types/inventory.types';
 
 function assert(condition: boolean, msg: string) {
   if (!condition) throw new Error(msg);

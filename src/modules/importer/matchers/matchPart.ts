@@ -1,5 +1,5 @@
 import type { PartCanonical } from '../schemas/part.schema';
-import type { ExistingInventoryItem } from '../persistence/loadExistingPartsFromSupabase';
+import type { ExistingInventoryItem } from '../../../types/inventory.types';
 import {
   buildInventoryIndex,
   normalizeIndexKey,
@@ -17,15 +17,6 @@ export interface MatchResult {
   existingPart?: ExistingInventoryItem;
   warnings: string[];
 }
-
-const toIdInt = (value: unknown): number | null => {
-  if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string' && value.trim() !== '') {
-    const parsed = Number(value.trim());
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-  return null;
-};
 
 const getMlbIds = (part: PartCanonical): string[] => {
   const values = Array.isArray(part.mlb_ids) ? part.mlb_ids : [];
@@ -69,8 +60,8 @@ export const matchPart = (
 
   const index = ensureIndex(inventory);
 
-  const idInt = toIdInt(importedPart.id_int);
-  if (idInt !== null) {
+  const idInt = normalizeIndexKey(importedPart.id_int);
+  if (idInt) {
     const existingPart = index.byIdInt.get(idInt);
     if (existingPart) {
       return { action: 'update', matchedBy: 'id_int', confidence: 100, existingPart, warnings: [] };

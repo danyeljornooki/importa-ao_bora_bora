@@ -1,5 +1,6 @@
 import type { PartCanonical } from '../modules/importer/schemas/part.schema';
 import { resolveLocation } from '../services/resolveLocation';
+import type { InventoryPersistencePayload } from '../types/inventory.types';
 
 export interface MongoIntegration {
   id: string;
@@ -10,47 +11,7 @@ export interface MongoIntegration {
   mlb_id?: string | null;
 }
 
-export interface MongoInventoryPayload {
-  store_id: string;
-
-  // Identifiers
-  id_int?: number | null;
-  id_string?: string | null;
-  code?: string | null;
-  tag_code?: string | null;
-
-  // Marketplace fields
-  marketplace_name?: string | null;
-  marketplace_name_normalized?: string | null;
-
-  // Stock / status
-  stock_quantity: number;
-  status: 'DISPONIVEL' | 'SEM_ESTOQUE';
-
-  // Price
-  price: number;
-  marketplace_price: number;
-
-  // Location
-  storage_location_id?: string | null;
-  storage_location_name?: string | null;
-
-  // Integrations map
-  integrations?: Record<string, MongoIntegration> | null;
-
-  // Images
-  images: string[];
-  image_count: number;
-
-  // Defaults
-  catalog_attributes: unknown[];
-  use_default_price: boolean;
-  part_category_name?: string | null;
-  mercado_libre_brasil_category_id?: string | null;
-
-  // Original source (lightweight)
-  sourceRow?: Record<string, unknown> | undefined;
-}
+export type MongoInventoryPayload = InventoryPersistencePayload;
 
 type Options = {
   storeId: string | number;
@@ -138,11 +99,10 @@ export const buildPersistencePayload = (
     }
   }
 
-  // If no id provided but there are mlb ids, fill id_string with first mlb
-  if (!payload.id_int && !payload.id_string) {
-    const firstMlb = firstString(importedPart.mlb_ids as unknown as string[]);
-    if (firstMlb) payload.id_string = firstMlb;
-  }
+  const explicitIdString = firstString(importedPart.id_string);
+  const firstMlb = firstString(importedPart.mlb_ids as unknown as string[]);
+  const idString = explicitIdString ?? firstMlb;
+  if (idString) payload.id_string = idString;
 
   // Code/tag
   if (importedPart.code !== undefined) payload.code = importedPart.code ?? null;

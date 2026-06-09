@@ -1,8 +1,8 @@
-import type { ExistingInventoryItem } from '../persistence/loadExistingPartsFromSupabase';
+import type { ExistingInventoryItem } from '../../../types/inventory.types';
 
 export interface InventoryIndex {
   items: ExistingInventoryItem[];
-  byIdInt: Map<number, ExistingInventoryItem>;
+  byIdInt: Map<string, ExistingInventoryItem>;
   byCode: Map<string, ExistingInventoryItem>;
   byIdString: Map<string, ExistingInventoryItem>;
   titleCandidates: Array<{ normalizedTitle: string; item: ExistingInventoryItem }>;
@@ -35,15 +35,16 @@ const isDeleted = (item: ExistingInventoryItem): boolean =>
   item.deleted === true || normalizeIndexKey(item.status) === 'deleted';
 
 export const buildInventoryIndex = (items: ExistingInventoryItem[]): InventoryIndex => {
-  const byIdInt = new Map<number, ExistingInventoryItem>();
+  const byIdInt = new Map<string, ExistingInventoryItem>();
   const byCode = new Map<string, ExistingInventoryItem>();
   const byIdString = new Map<string, ExistingInventoryItem>();
   const titleCandidates: Array<{ normalizedTitle: string; item: ExistingInventoryItem }> = [];
   const activeItems = (items ?? []).filter((item) => !isDeleted(item));
 
   for (const item of activeItems) {
-    if (typeof item.id_int === 'number' && Number.isFinite(item.id_int) && !byIdInt.has(item.id_int)) {
-      byIdInt.set(item.id_int, item);
+    const idInt = normalizeIndexKey(item.id_int);
+    if (idInt && !byIdInt.has(idInt)) {
+      byIdInt.set(idInt, item);
     }
 
     const code = normalizeIndexKey(item.code);

@@ -1,6 +1,6 @@
-import type { MongoInventoryPayload } from '../core/buildPersistencePayload';
+import type { InventoryPersistencePayload } from '../types/inventory.types';
 import { buildPersistencePayload } from '../core/buildPersistencePayload';
-import type { ExistingInventoryItem } from '../modules/importer/persistence/loadExistingPartsFromSupabase';
+import type { ExistingInventoryItem } from '../types/inventory.types';
 
 export type ExecutionType = 'create' | 'update' | 'skip' | 'conflict' | 'invalid';
 
@@ -9,7 +9,7 @@ export interface ExecutionAction {
   type: ExecutionType;
   reason: string;
   targetId?: string;
-  payload?: MongoInventoryPayload;
+  payload?: InventoryPersistencePayload;
 }
 
 export interface ExecutionSummary {

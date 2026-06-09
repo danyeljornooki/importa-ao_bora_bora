@@ -1,4 +1,4 @@
-import type { MongoInventoryPayload } from '../../../core/buildPersistencePayload';
+import type { InventoryPersistencePayload } from '../../../types/inventory.types';
 
 export interface SupabaseInventoryPayload {
   store_id?: string | null;
@@ -65,7 +65,7 @@ const allowedFields: Array<keyof SupabaseInventoryPayload> = [
 ];
 
 export function sanitizeSupabasePayload(
-  payload: MongoInventoryPayload
+  payload: InventoryPersistencePayload
 ): SupabaseInventoryPayload {
   const record = payload as unknown as Record<string, unknown>;
   const sanitized: SupabaseInventoryPayload = {};
