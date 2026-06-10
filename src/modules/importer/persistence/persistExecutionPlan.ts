@@ -3,6 +3,10 @@ import type {
   InventoryPersistenceAdapter,
   InventoryPersistencePayload,
 } from '../../../types/inventory.types';
+import type {
+  ImportHistoryAdapter,
+  SaveImportRunItemInput,
+} from '../../../types/importHistory.types';
 
 export interface PersistExecutionResult {
   total: number;
@@ -18,10 +22,24 @@ export interface PersistExecutionResult {
 export interface PersistExecutionOptions {
   batchSize?: number;
   onProgress?: (progress: number) => void;
+  history?: {
+    adapter: ImportHistoryAdapter;
+    runId: string;
+  };
 }
 
 const isExecutable = (action: ExecutionAction): boolean =>
   action.type === 'create' || action.type === 'update';
+
+const buildHistoryItem = (action: ExecutionAction): SaveImportRunItemInput => ({
+  row: action.row,
+  action: action.type,
+  targetId: action.targetId ?? null,
+  reason: action.reason,
+  payload: action.payload,
+  executionStatus: isExecutable(action) ? 'pending' : 'skipped',
+  executionError: null,
+});
 
 export async function persistExecutionPlan(
   executionPlan: ExecutionPlan,
@@ -32,6 +50,10 @@ export async function persistExecutionPlan(
   const onProgress = options.onProgress;
   const actions = executionPlan.actions;
   const executableActions = actions.filter(isExecutable);
+  const historyItems = actions.map(buildHistoryItem);
+  const historyItemsByRow = new Map(
+    historyItems.map((item) => [item.row, item])
+  );
 
   const result: PersistExecutionResult = {
     total: executableActions.length,
@@ -45,6 +67,12 @@ export async function persistExecutionPlan(
   };
 
   if (executableActions.length === 0) {
+    if (options.history) {
+      await options.history.adapter.saveRunItems(
+        options.history.runId,
+        historyItems
+      );
+    }
     onProgress?.(100);
     return result;
   }
@@ -54,53 +82,81 @@ export async function persistExecutionPlan(
 
     for (const action of batch) {
       const payload = action.payload as InventoryPersistencePayload | undefined;
+      const historyItem = historyItemsByRow.get(action.row);
 
       if (!payload || typeof payload !== 'object') {
+        const executionError = 'Missing or invalid payload';
         result.failed += 1;
-        result.errors.push({ row: action.row, reason: 'Missing or invalid payload' });
+        result.errors.push({ row: action.row, reason: executionError });
+        if (historyItem) {
+          historyItem.executionStatus = 'failed';
+          historyItem.executionError = executionError;
+        }
         continue;
       }
 
       if (action.type === 'create') {
         const actionResult = await adapter.createItem(payload);
         if (!actionResult.success) {
+          const executionError = actionResult.error ?? 'Create failed';
           result.failed += 1;
           result.errors.push({
             row: action.row,
-            reason: actionResult.error ?? 'Create failed',
+            reason: executionError,
             payload,
           });
+          if (historyItem) {
+            historyItem.executionStatus = 'failed';
+            historyItem.executionError = executionError;
+          }
           continue;
         }
 
         result.created += 1;
+        if (historyItem) {
+          historyItem.targetId = actionResult.id ?? historyItem.targetId ?? null;
+          historyItem.executionStatus = 'success';
+        }
         continue;
       }
 
       if (action.type === 'update') {
         if (!action.targetId || String(action.targetId).trim() === '') {
+          const executionError = 'Missing targetId for update';
           result.failed += 1;
           result.errors.push({
             row: action.row,
-            reason: 'Missing targetId for update',
+            reason: executionError,
             payload,
           });
+          if (historyItem) {
+            historyItem.executionStatus = 'failed';
+            historyItem.executionError = executionError;
+          }
           continue;
         }
 
         const actionResult = await adapter.updateItem(action.targetId, payload);
         if (!actionResult.success) {
+          const executionError = actionResult.error ?? 'Update failed';
           result.failed += 1;
           result.errors.push({
             row: action.row,
-            reason: actionResult.error ?? 'Update failed',
+            reason: executionError,
             payload,
             targetId: action.targetId,
           });
+          if (historyItem) {
+            historyItem.executionStatus = 'failed';
+            historyItem.executionError = executionError;
+          }
           continue;
         }
 
         result.updated += 1;
+        if (historyItem) {
+          historyItem.executionStatus = 'success';
+        }
       }
     }
 
@@ -109,6 +165,13 @@ export async function persistExecutionPlan(
       Math.round(((start + batch.length) / executableActions.length) * 100)
     );
     onProgress?.(progress);
+  }
+
+  if (options.history) {
+    await options.history.adapter.saveRunItems(
+      options.history.runId,
+      historyItems
+    );
   }
 
   return result;

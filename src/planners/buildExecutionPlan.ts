@@ -1,6 +1,12 @@
-import type { InventoryPersistencePayload } from '../types/inventory.types';
+import type {
+  InventoryPersistencePatch,
+  InventoryPersistencePayload,
+} from '../types/inventory.types';
 import { buildPersistencePayload } from '../core/buildPersistencePayload';
+import { buildUpdatePatch } from '../core/buildUpdatePatch';
 import type { ExistingInventoryItem } from '../types/inventory.types';
+import type { PartChange } from '../modules/importer/comparators/comparePart';
+import type { PartCanonical } from '../modules/importer/schemas/part.schema';
 
 export type ExecutionType = 'create' | 'update' | 'skip' | 'conflict' | 'invalid';
 
@@ -9,7 +15,7 @@ export interface ExecutionAction {
   type: ExecutionType;
   reason: string;
   targetId?: string;
-  payload?: InventoryPersistencePayload;
+  payload?: InventoryPersistencePayload | InventoryPersistencePatch;
 }
 
 export interface ExecutionSummary {
@@ -35,8 +41,9 @@ interface FinalDecision {
   row: number;
   valid: boolean;
   action?: ExecutionType;
-  data?: unknown;
+  data?: PartCanonical;
   existingPart?: ExistingInventoryItem | null;
+  changes?: PartChange[];
   reason?: string;
 }
 
@@ -76,7 +83,7 @@ export const buildExecutionPlan = (
     }
 
     if (decision.action === 'create') {
-      const payload = buildPersistencePayload(decision.data as any, {
+      const payload = buildPersistencePayload(decision.data as PartCanonical, {
         storeId: options.storeId,
         integrationId: options.integrationId,
       });
@@ -91,9 +98,17 @@ export const buildExecutionPlan = (
         throw new Error(`targetId ausente para update na linha ${decision.row}`);
       }
 
-      const payload = buildPersistencePayload(decision.data as any, {
-        storeId: options.storeId,
-        integrationId: options.integrationId,
+      if (!decision.data) {
+        throw new Error(`incomingPart ausente para update na linha ${decision.row}`);
+      }
+
+      const payload = buildUpdatePatch({
+        incomingPart: decision.data,
+        existingPart: decision.existingPart,
+        changes: decision.changes ?? [],
+        context: {
+          storeId: String(options.storeId),
+        },
       });
       actions.push({
         row: decision.row,

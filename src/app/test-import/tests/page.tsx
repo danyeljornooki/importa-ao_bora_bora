@@ -76,10 +76,22 @@ const runTests = (): { name: string; ok: boolean; error?: string }[] => {
   } catch (e: any) { results.push({ name: 'deleted ignored', ok: false, error: e.message }); }
 
   try {
+    const r = matchPart({ title: '  ENGRENAGEM MOTOR PARTIDA xre 300  ', price: 1, stock_quantity: 1 } as any, index);
+    assert(r.action === 'conflict' && r.matchedBy === 'title', 'exact normalized title should conflict');
+    results.push({ name: 'exact normalized title conflicts', ok: true });
+  } catch (e: any) { results.push({ name: 'exact normalized title conflicts', ok: false, error: e.message }); }
+
+  try {
     const r = matchPart({ title: 'engrenagem motor', price: 1, stock_quantity: 1 } as any, index);
-    assert(r.action === 'conflict' && r.matchedBy === 'title', 'title conflict failed');
-    results.push({ name: 'title conflict never update', ok: true });
-  } catch (e: any) { results.push({ name: 'title conflict never update', ok: false, error: e.message }); }
+    assert(
+      r.action === 'create' &&
+      r.matchedBy === null &&
+      r.titleCandidate?.id === '1' &&
+      r.warnings.includes('possível título semelhante encontrado'),
+      'partial title should create with warning'
+    );
+    results.push({ name: 'partial title creates with warning', ok: true });
+  } catch (e: any) { results.push({ name: 'partial title creates with warning', ok: false, error: e.message }); }
 
   try {
     const r = matchPart({ title: 'unique random title', price: 1, stock_quantity: 1 } as any, index);
@@ -164,9 +176,14 @@ const runTests = (): { name: string; ok: boolean; error?: string }[] => {
 
   try {
     const r = matchPart({ title: 'Peca congelada', price: 1, stock_quantity: 1 } as any, buildInventoryIndex(nineExisting));
-    assert(r.action === 'conflict' && r.matchedBy === 'title', 'title-only similar should conflict');
-    results.push({ name: 'acceptance title-only similar conflicts', ok: true });
-  } catch (e: any) { results.push({ name: 'acceptance title-only similar conflicts', ok: false, error: e.message }); }
+    assert(
+      r.action === 'create' &&
+      r.matchedBy === null &&
+      r.warnings.includes('possível título semelhante encontrado'),
+      'title-only similar should create with warning'
+    );
+    results.push({ name: 'acceptance title-only similar creates', ok: true });
+  } catch (e: any) { results.push({ name: 'acceptance title-only similar creates', ok: false, error: e.message }); }
 
   return results;
 };

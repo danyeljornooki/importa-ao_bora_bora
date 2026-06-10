@@ -106,12 +106,33 @@ export interface ImportSummary {
   duracao: string;
 }
 
+export interface ConflictDetail {
+  imported: {
+    row: number;
+    code: string | null;
+    id_int: string | number | null;
+    mlb_id: string | null;
+    title: string | null;
+  };
+  candidate: {
+    id: string | null;
+    code: string | null;
+    id_int: number | null;
+    id_string: string | null;
+    title: string | null;
+  };
+  reason: 'title_similarity';
+  finalAction: 'create' | 'conflict';
+  warning?: string;
+}
+
 export interface RunImportResult {
   sheetName: string;
   resumo: ImportSummary;
   qualidade: QualityStats;
   logs: LogEntry[];
   atencao: CompactAttentionItem[];
+  conflictDetails: ConflictDetail[];
   compareDebugUpdates: Array<{
     row: number;
     matchedBy: string | null;
@@ -454,6 +475,25 @@ export const runImport = async (
       counters.conflitos += 1;
       qualityStats.possiveis_duplicadas += 1;
 
+      const conflictDetails: ConflictDetail = {
+        imported: {
+          row: rowState.row,
+          code: normalized.code ?? null,
+          id_int: normalized.id_int ?? null,
+          mlb_id: firstMlbId(normalized),
+          title: normalized.title ?? null,
+        },
+        candidate: {
+          id: match.existingPart?.id ?? null,
+          code: match.existingPart?.code ?? null,
+          id_int: match.existingPart?.id_int ?? null,
+          id_string: match.existingPart?.id_string ?? null,
+          title: match.existingPart?.marketplace_name ?? null,
+        },
+        reason: 'title_similarity',
+        finalAction: 'conflict',
+      };
+
       previewItems.push({
         row: rowState.row,
         valid: true,
@@ -468,6 +508,7 @@ export const runImport = async (
         errors: validation.errors,
         warnings: [...validation.warnings, ...match.warnings],
         reason: 'possivel peca duplicada',
+        conflictDetails,
       });
 
       logs.push({
@@ -505,6 +546,29 @@ export const runImport = async (
     }
     counters.criadas += 1;
 
+    const similarTitleDetails: ConflictDetail | undefined =
+      match.titleMatch === 'similar' && match.titleCandidate
+        ? {
+            imported: {
+              row: rowState.row,
+              code: normalized.code ?? null,
+              id_int: normalized.id_int ?? null,
+              mlb_id: firstMlbId(normalized),
+              title: normalized.title ?? null,
+            },
+            candidate: {
+              id: match.titleCandidate.id ?? null,
+              code: match.titleCandidate.code ?? null,
+              id_int: match.titleCandidate.id_int ?? null,
+              id_string: match.titleCandidate.id_string ?? null,
+              title: match.titleCandidate.marketplace_name ?? null,
+            },
+            reason: 'title_similarity',
+            finalAction: 'create',
+            warning: 'possível título semelhante encontrado',
+          }
+        : undefined;
+
     previewItems.push({
       row: rowState.row,
       valid: true,
@@ -515,9 +579,11 @@ export const runImport = async (
       totalChanges: 0,
       changes: [],
       data: normalized,
+      existingPart: match.titleCandidate,
       errors: validation.errors,
-      warnings: validation.warnings,
+      warnings: [...validation.warnings, ...match.warnings],
       reason: 'nova peca',
+      conflictDetails: similarTitleDetails,
     });
 
     const qualityWarnings: string[] = [];
@@ -577,6 +643,9 @@ export const runImport = async (
     qualidade: qualityStats,
     logs,
     atencao: atencao.slice(0, 20),
+    conflictDetails: previewItems
+      .filter((item) => item.conflictDetails)
+      .map((item) => item.conflictDetails),
     compareDebugUpdates: previewItems
       .filter((item) => item.action === 'update')
       .slice(0, 10)

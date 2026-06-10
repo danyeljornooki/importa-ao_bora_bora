@@ -30,6 +30,7 @@ export interface InventoryPersistencePayload {
 
   marketplace_name?: string | null;
   marketplace_name_normalized?: string | null;
+  description?: string | null;
 
   stock_quantity: number;
   status: 'DISPONIVEL' | 'SEM_ESTOQUE';
@@ -60,6 +61,8 @@ export interface InventoryPersistencePayload {
   sourceRow?: Record<string, unknown>;
 }
 
+export type InventoryPersistencePatch = Partial<InventoryPersistencePayload>;
+
 export interface PersistenceActionResult {
   success: boolean;
   id?: string;
@@ -73,6 +76,6 @@ export interface InventoryPersistenceAdapter {
 
   updateItem(
     targetId: string,
-    payload: InventoryPersistencePayload
+    payload: InventoryPersistencePatch
   ): Promise<PersistenceActionResult>;
 }

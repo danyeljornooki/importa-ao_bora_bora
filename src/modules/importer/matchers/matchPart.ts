@@ -15,6 +15,8 @@ export interface MatchResult {
   matchedBy: MatchSource;
   confidence: number;
   existingPart?: ExistingInventoryItem;
+  titleCandidate?: ExistingInventoryItem;
+  titleMatch?: 'exact' | 'similar';
   warnings: string[];
 }
 
@@ -27,9 +29,7 @@ const getMlbIds = (part: PartCanonical): string[] => {
     .filter((value): value is string => !!value);
 };
 
-const titleConflict = (incomingTitle: string, existingTitle: string): boolean => {
-  if (incomingTitle === existingTitle) return true;
-
+const titlesAreSimilar = (incomingTitle: string, existingTitle: string): boolean => {
   if (incomingTitle.includes(existingTitle) || existingTitle.includes(incomingTitle)) {
     const incomingWords = incomingTitle.split(' ');
     const existingWords = existingTitle.split(' ');
@@ -85,16 +85,35 @@ export const matchPart = (
 
   const incomingTitle = normalizeTitleKey(importedPart.title);
   if (incomingTitle) {
+    let similarCandidate: ExistingInventoryItem | undefined;
+
     for (const candidate of index.titleCandidates) {
-      if (titleConflict(incomingTitle, candidate.normalizedTitle)) {
+      if (incomingTitle === candidate.normalizedTitle) {
         return {
           action: 'conflict',
           matchedBy: 'title',
-          confidence: 40,
+          confidence: 100,
           existingPart: candidate.item,
-          warnings: ['possivel peca ja cadastrada por titulo semelhante'],
+          titleCandidate: candidate.item,
+          titleMatch: 'exact',
+          warnings: ['titulo normalizado identico ao de uma peca existente'],
         };
       }
+
+      if (!similarCandidate && titlesAreSimilar(incomingTitle, candidate.normalizedTitle)) {
+        similarCandidate = candidate.item;
+      }
+    }
+
+    if (similarCandidate) {
+      return {
+        action: 'create',
+        matchedBy: null,
+        confidence: 0,
+        titleCandidate: similarCandidate,
+        titleMatch: 'similar',
+        warnings: ['possível título semelhante encontrado'],
+      };
     }
   }
 
