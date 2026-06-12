@@ -12,6 +12,9 @@ export interface ExistingInventoryItem {
   name?: string | null;
   title?: string | null;
   description?: string | null;
+  location?: string | null;
+  storage_location_id?: string | null;
+  storage_location_name?: string | null;
   sku?: string | null;
   mercado_libre_brasil_category_id?: string | null;
   part_category_id?: string | null;
@@ -82,6 +85,9 @@ export interface InventoryPersistenceAdapter {
 
   updateItem(
     targetId: string,
-    payload: InventoryPersistencePatch
+    payload: InventoryPersistencePatch,
+    options?: {
+      storeId?: string;
+    }
   ): Promise<PersistenceActionResult>;
 }

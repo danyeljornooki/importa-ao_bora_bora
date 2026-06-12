@@ -12,6 +12,11 @@ export interface CompareResult {
   changes: PartChange[];
 }
 
+type ExistingComparablePart = PartCanonical & {
+  storage_location_id?: string | null;
+  storage_location_name?: string | null;
+};
+
 const fieldsToCompare: Array<keyof Omit<PartCanonical, 'sourceRow'>> = [
   'code',
   'price',
@@ -117,7 +122,7 @@ const valuesEqual = (fieldName: string, oldValue: unknown, newValue: unknown): b
 
 export const comparePart = (
   importedPart: PartCanonical,
-  existingPart: PartCanonical
+  existingPart: ExistingComparablePart
 ): CompareResult => {
   const changes: PartChange[] = [];
 
@@ -133,6 +138,8 @@ export const comparePart = (
     const oldValue =
       field === 'title'
         ? existingPart.title ?? existingPart.marketplace_name
+        : field === 'location'
+          ? existingPart.storage_location_name ?? existingPart.location
         : field === 'mlb_ids'
           ? existingPart.mlb_ids ?? (existingPart.id_string ? [existingPart.id_string] : undefined)
           : existingPart[field];

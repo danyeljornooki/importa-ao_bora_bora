@@ -59,6 +59,7 @@ export const executeImportWithHistory = async (
       input.inventoryAdapter,
       {
         onProgress: input.onProgress,
+        storeId: input.storeId,
         history: {
           adapter: input.historyAdapter,
           runId,

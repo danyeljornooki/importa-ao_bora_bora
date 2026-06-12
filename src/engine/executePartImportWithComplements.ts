@@ -370,7 +370,10 @@ export const executePartImportWithComplements = async (
     const persistResult = await persistExecutionPlan(
       buildPartOnlyExecutionPlan(input.analysisResult.executionPlan),
       input.inventoryAdapter,
-      { onProgress: options.onProgress }
+      {
+        onProgress: options.onProgress,
+        storeId: input.executionContext.storeId,
+      }
     );
 
     const partsByRow = new Map(

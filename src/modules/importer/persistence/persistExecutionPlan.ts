@@ -30,6 +30,7 @@ export interface PersistExecutionRowResult {
 export interface PersistExecutionOptions {
   batchSize?: number;
   onProgress?: (progress: number) => void;
+  storeId?: string;
   history?: {
     adapter: ImportHistoryAdapter;
     runId: string;
@@ -199,7 +200,9 @@ export async function persistExecutionPlan(
 
         let actionResult;
         try {
-          actionResult = await adapter.updateItem(action.targetId, payload);
+          actionResult = await adapter.updateItem(action.targetId, payload, {
+            storeId: options.storeId,
+          });
         } catch (error) {
           actionResult = {
             success: false,

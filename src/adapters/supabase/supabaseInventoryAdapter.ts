@@ -45,6 +45,16 @@ const mapInventoryItem = (row: Record<string, unknown>): ExistingInventoryItem =
   code: hasValue(row.code) ? String(row.code) : null,
   tag_code: hasValue(row.tag_code) ? String(row.tag_code) : null,
   marketplace_name: hasValue(row.marketplace_name) ? String(row.marketplace_name) : null,
+  description: hasValue(row.description) ? String(row.description) : null,
+  location: hasValue(row.storage_location_name)
+    ? String(row.storage_location_name)
+    : null,
+  storage_location_id: hasValue(row.storage_location_id)
+    ? String(row.storage_location_id)
+    : null,
+  storage_location_name: hasValue(row.storage_location_name)
+    ? String(row.storage_location_name)
+    : null,
   stock_quantity: optionalNumber(row.stock_quantity),
   price: optionalNumber(row.price),
   status: hasValue(row.status) ? String(row.status) : null,
@@ -75,6 +85,9 @@ export const createSupabaseInventoryAdapter = (
           code,
           tag_code,
           marketplace_name,
+          description,
+          storage_location_id,
+          storage_location_name,
           stock_quantity,
           price,
           status,
@@ -116,17 +129,29 @@ export const createSupabaseInventoryAdapter = (
 
   async updateItem(
     targetId: string,
-    payload: InventoryPersistencePayload
+    payload: InventoryPersistencePayload,
+    options = {}
   ): Promise<PersistenceActionResult> {
     if (!hasValue(targetId)) {
       return { success: false, error: 'Missing targetId for update' };
     }
 
     try {
-      const { error } = await client
+      const storeId = options.storeId?.trim();
+      let query = client
         .from('inventory_items')
         .update(sanitizeSupabasePayload(payload))
         .eq('id', targetId);
+
+      if (storeId) {
+        query = query.eq('store_id', storeId);
+      } else if (process.env.NODE_ENV !== 'production') {
+        console.warn(
+          '[supabaseInventoryAdapter] updateItem sem storeId; atualização limitada apenas por id.'
+        );
+      }
+
+      const { error } = await query;
 
       return error
         ? { success: false, error: error.message }
