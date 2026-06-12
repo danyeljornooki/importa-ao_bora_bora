@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useEffect, useState } from 'react';
+import { AppNavigation } from '../../../components/AppNavigation';
 import { matchPart } from '../../../core/importer/matching/matchPart';
 import { buildInventoryIndex } from '../../../core/importer/matching/buildInventoryIndex';
 import { comparePart } from '../../../core/importer/compare/comparePart';
@@ -197,6 +198,7 @@ export default function TestPage() {
 
   return (
     <main style={{ padding: 12 }}>
+      <AppNavigation />
       <h1>Integration Parity Tests (match)</h1>
       <ul>
         {results.map((r, i) => (

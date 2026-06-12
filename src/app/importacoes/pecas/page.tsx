@@ -2,12 +2,20 @@
 
 import React, { useState } from 'react';
 import Link from 'next/link';
+import { AppNavigation } from '../../../components/AppNavigation';
+import {
+  authenticateMercadoLivreIntegration,
+  MercadoLivreAuthenticationError,
+  type MercadoLivreAuthenticationAttempt,
+} from '../../../adapters/mercado-livre/mercadoLivreAuthAdapter';
 import { supabaseImportHistoryAdapter } from '../../../adapters/supabase/supabaseImportHistoryAdapter';
 import { supabaseInventoryAdapter } from '../../../adapters/supabase/supabaseInventoryAdapter';
+import { mercadoLivreAdapter } from '../../../adapters/mercado-livre/mercadoLivreAdapter';
+import { supabaseMarketplaceAdAdapter } from '../../../adapters/supabase/supabaseMarketplaceAdAdapter';
 import {
-  executeImportWithHistory,
-  type ExecuteImportWithHistoryResult,
-} from '../../../engine/executeImportWithHistory';
+  executePartImportWithComplements,
+  type ExecutePartImportWithComplementsResult,
+} from '../../../engine/executePartImportWithComplements';
 import {
   runImport,
   type ConflictDetail,
@@ -15,6 +23,7 @@ import {
 } from '../../../engine/runImport';
 import type { ImportActionType } from '../../../modules/importer/planner/buildImportPlan';
 import type { PartCanonical } from '../../../modules/importer/schemas/part.schema';
+import type { ImportExecutionContext } from '../../../types/integration.types';
 
 interface PreviewItem {
   row: number;
@@ -79,6 +88,15 @@ const firstMlbId = (part?: PartCanonical): string | null => {
   return part?.id_string ?? null;
 };
 
+const marketplaceNickname = (
+  context: ImportExecutionContext | null
+): string | null => {
+  const nickname = context?.marketplace?.user?.nickname;
+  return typeof nickname === 'string' && nickname.trim() !== ''
+    ? nickname.trim()
+    : null;
+};
+
 const buildPendingItems = (result: RunImportResult | null): PendingItem[] => {
   if (!result) return [];
 
@@ -129,9 +147,16 @@ const Metric = ({ label, value }: { label: string; value: number | string }) => 
 
 export default function PartsImportPage() {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [storeId, setStoreId] = useState<string>('');
+  const [integrationId, setIntegrationId] = useState<string>('');
+  const [executionContext, setExecutionContext] = useState<ImportExecutionContext | null>(null);
+  const [isLoadingIntegration, setIsLoadingIntegration] = useState<boolean>(false);
+  const [integrationError, setIntegrationError] = useState<string | null>(null);
+  const [integrationErrorDetails, setIntegrationErrorDetails] = useState<
+    MercadoLivreAuthenticationAttempt[]
+  >([]);
   const [analysisResult, setAnalysisResult] = useState<RunImportResult | null>(null);
-  const [executionResult, setExecutionResult] = useState<ExecuteImportWithHistoryResult | null>(null);
+  const [executionResult, setExecutionResult] =
+    useState<ExecutePartImportWithComplementsResult | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [isExecuting, setIsExecuting] = useState<boolean>(false);
   const [debugMode, setDebugMode] = useState<boolean>(false);
@@ -149,9 +174,33 @@ export default function PartsImportPage() {
     setExecutionProgress(0);
   };
 
+  const handleLoadIntegration = async () => {
+    setIsLoadingIntegration(true);
+    setIntegrationError(null);
+    setIntegrationErrorDetails([]);
+    setExecutionContext(null);
+    clearResults();
+
+    try {
+      const context = await authenticateMercadoLivreIntegration(integrationId);
+      setExecutionContext(context);
+    } catch (caughtError: unknown) {
+      setIntegrationError(
+        caughtError instanceof Error ? caughtError.message : String(caughtError)
+      );
+      setIntegrationErrorDetails(
+        caughtError instanceof MercadoLivreAuthenticationError
+          ? caughtError.attempts
+          : []
+      );
+    } finally {
+      setIsLoadingIntegration(false);
+    }
+  };
+
   const handleAnalyze = async () => {
-    if (!selectedFile || storeId.trim() === '') {
-      setError('Informe o Store ID e selecione uma planilha.');
+    if (!selectedFile || !executionContext) {
+      setError('Carregue a integração e selecione uma planilha.');
       return;
     }
 
@@ -162,8 +211,9 @@ export default function PartsImportPage() {
 
     try {
       const result = await runImport(await selectedFile.arrayBuffer(), {
-        storeId: storeId.trim(),
+        storeId: executionContext.storeId,
         adapter: supabaseInventoryAdapter,
+        integrationId: executionContext.integrationId,
         debugMatching: debugMode,
       });
 
@@ -179,7 +229,7 @@ export default function PartsImportPage() {
   };
 
   const handleExecute = async () => {
-    if (!selectedFile || !analysisResult) {
+    if (!selectedFile || !analysisResult || !executionContext) {
       setError('Analise a planilha antes de executar a importação.');
       return;
     }
@@ -189,15 +239,27 @@ export default function PartsImportPage() {
     setExecutionProgress(0);
 
     try {
-      const result = await executeImportWithHistory({
-        file: selectedFile,
-        storeId: storeId.trim(),
+      const result = await executePartImportWithComplements({
+        analysisResult,
+        executionContext,
         inventoryAdapter: supabaseInventoryAdapter,
         historyAdapter: supabaseImportHistoryAdapter,
-        adapterName: 'supabase',
-        engineVersion: '1.0.0',
-        debugMatching: debugMode,
-        onProgress: setExecutionProgress,
+        adRegistryAdapter: supabaseMarketplaceAdAdapter,
+        marketplaceAdapter: mercadoLivreAdapter,
+        options: {
+          fileName: selectedFile.name,
+          adapterName: 'supabase',
+          engineVersion: '1.1.0',
+          metadata: {
+            fileSize: selectedFile.size,
+            fileType: selectedFile.type || null,
+            debugMatching: debugMode,
+            integrationName: executionContext.integrationName ?? null,
+            marketplaceUserId: executionContext.marketplace?.userId ?? null,
+            marketplaceNickname: marketplaceNickname(executionContext),
+          },
+          onProgress: setExecutionProgress,
+        },
       });
 
       setAnalysisResult(result.importResult);
@@ -213,13 +275,24 @@ export default function PartsImportPage() {
   const summary = analysisResult?.summary;
   const pendingItems = buildPendingItems(analysisResult);
   const visiblePendingItems = pendingItems.slice(0, 20);
-  const executableActions = summary ? summary.creates + summary.updates : 0;
+  const complementEligibleActions =
+    analysisResult?.executionPlan.actions.filter((action) =>
+      action.type === 'create' ||
+      action.type === 'update' ||
+      action.type === 'skip'
+    ).length ?? 0;
   const canExecute =
     hasAnalyzed &&
     !hasExecuted &&
-    executableActions > 0 &&
+    executionContext !== null &&
+    complementEligibleActions > 0 &&
     !isAnalyzing &&
     !isExecuting;
+  const pendingAdItems =
+    executionResult?.rows.filter((row) =>
+      row.adLink &&
+      ['pending', 'failed', 'conflict', 'invalid'].includes(row.adLink.action)
+    ) ?? [];
 
   return (
     <main
@@ -232,6 +305,7 @@ export default function PartsImportPage() {
       }}
     >
       <div style={{ width: '100%', maxWidth: 1080, margin: '0 auto' }}>
+        <AppNavigation />
         <header style={{ marginBottom: 24 }}>
           <div style={{ color: '#2563eb', fontSize: 13, fontWeight: 700 }}>Importações / Peças v1</div>
           <h1 style={{ margin: '6px 0 8px', fontSize: 32 }}>Importação de Peças</h1>
@@ -246,29 +320,117 @@ export default function PartsImportPage() {
         <div style={{ display: 'grid', gap: 18 }}>
           <section style={sectionStyle}>
             <h2 style={{ marginTop: 0 }}>1. Contexto</h2>
-            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) minmax(220px, 1fr)', gap: 16 }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 2fr) auto', gap: 12, alignItems: 'end' }}>
               <label>
-                <span style={labelStyle}>Store ID</span>
+                <span style={labelStyle}>Integration ID</span>
                 <input
                   type="text"
-                  value={storeId}
-                  disabled={isAnalyzing || isExecuting}
-                  placeholder="Informe o identificador da loja"
+                  value={integrationId}
+                  disabled={isLoadingIntegration || isAnalyzing || isExecuting}
+                  placeholder="Informe o identificador da integração"
                   onChange={(event) => {
-                    setStoreId(event.target.value);
+                    setIntegrationId(event.target.value);
+                    setExecutionContext(null);
+                    setIntegrationError(null);
+                    setIntegrationErrorDetails([]);
                     clearResults();
                   }}
                   style={inputStyle}
                 />
               </label>
-              <div>
-                <div style={labelStyle}>Adapter atual</div>
-                <div style={{ ...inputStyle, backgroundColor: '#f8fafc' }}>Supabase</div>
+              <button
+                type="button"
+                onClick={handleLoadIntegration}
+                disabled={
+                  integrationId.trim() === '' ||
+                  isLoadingIntegration ||
+                  isAnalyzing ||
+                  isExecuting
+                }
+                style={{
+                  ...primaryButtonStyle,
+                  opacity:
+                    integrationId.trim() === '' || isLoadingIntegration ? 0.55 : 1,
+                  cursor:
+                    integrationId.trim() === '' || isLoadingIntegration
+                      ? 'not-allowed'
+                      : 'pointer',
+                }}
+              >
+                {isLoadingIntegration ? 'Carregando...' : 'Carregar Integração'}
+              </button>
+            </div>
+
+            {integrationError && (
+              <div style={{ marginTop: 12, color: '#b91c1c' }}>{integrationError}</div>
+            )}
+
+            {integrationErrorDetails.length > 0 && (
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: 14,
+                  border: '1px solid #fecaca',
+                  borderRadius: 8,
+                  backgroundColor: '#fef2f2',
+                }}
+              >
+                <strong>Erro técnico:</strong>
+                <div style={{ display: 'grid', gap: 12, marginTop: 10 }}>
+                  {integrationErrorDetails.map((attempt) => (
+                    <div
+                      key={attempt.format}
+                      style={{
+                        padding: 10,
+                        border: '1px solid #fecaca',
+                        borderRadius: 6,
+                        backgroundColor: '#fff',
+                      }}
+                    >
+                      <div><strong>Formato:</strong> {attempt.format}</div>
+                      <div><strong>Status:</strong> {attempt.status ?? 'sem resposta HTTP'}</div>
+                      <div><strong>Headers:</strong></div>
+                      <pre style={{ overflow: 'auto', margin: '4px 0 8px', padding: 8, backgroundColor: '#f8fafc' }}>
+{JSON.stringify(attempt.headers, null, 2)}
+                      </pre>
+                      <div><strong>Body:</strong></div>
+                      <pre style={{ overflow: 'auto', margin: '4px 0 0', padding: 8, backgroundColor: '#f8fafc', whiteSpace: 'pre-wrap' }}>
+{attempt.body}
+                      </pre>
+                    </div>
+                  ))}
+                </div>
               </div>
-            </div>
-            <div style={{ marginTop: 12, color: '#64748b', fontSize: 13 }}>
-              Nome da loja: não disponível nesta versão.
-            </div>
+            )}
+
+            {executionContext && (
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(190px, 1fr))',
+                  gap: 10,
+                  marginTop: 16,
+                  padding: 14,
+                  border: '1px solid #bfdbfe',
+                  borderRadius: 8,
+                  backgroundColor: '#eff6ff',
+                }}
+              >
+                <div><strong>Loja ID:</strong> {executionContext.storeId}</div>
+                <div><strong>Nome:</strong> {executionContext.integrationName ?? '-'}</div>
+                <div><strong>Canal:</strong> {executionContext.channel}</div>
+                <div><strong>User ID:</strong> {executionContext.marketplace?.userId ?? '-'}</div>
+                <div><strong>Nickname:</strong> {marketplaceNickname(executionContext) ?? '-'}</div>
+                <div><strong>Token expira em:</strong> {executionContext.marketplace?.tokenExpiresIn ?? '-'}</div>
+                <div><strong>Adapter atual:</strong> Supabase</div>
+                {debugMode && (
+                  <div>
+                    <strong>Token:</strong>{' '}
+                    {executionContext.marketplace?.accessToken ? 'presente' : 'ausente'}
+                  </div>
+                )}
+              </div>
+            )}
           </section>
 
           <section style={sectionStyle}>
@@ -295,11 +457,11 @@ export default function PartsImportPage() {
             <button
               type="button"
               onClick={handleAnalyze}
-              disabled={!selectedFile || storeId.trim() === '' || isAnalyzing || isExecuting || hasExecuted}
+              disabled={!selectedFile || !executionContext || isAnalyzing || isExecuting || hasExecuted}
               style={{
                 ...primaryButtonStyle,
-                opacity: !selectedFile || storeId.trim() === '' || isAnalyzing || isExecuting || hasExecuted ? 0.55 : 1,
-                cursor: !selectedFile || storeId.trim() === '' || isAnalyzing || isExecuting || hasExecuted
+                opacity: !selectedFile || !executionContext || isAnalyzing || isExecuting || hasExecuted ? 0.55 : 1,
+                cursor: !selectedFile || !executionContext || isAnalyzing || isExecuting || hasExecuted
                   ? 'not-allowed'
                   : 'pointer',
               }}
@@ -399,7 +561,7 @@ export default function PartsImportPage() {
               {isExecuting ? 'Executando Importação...' : 'Executar Importação'}
             </button>
 
-            {hasAnalyzed && executableActions === 0 && (
+            {hasAnalyzed && complementEligibleActions === 0 && (
               <div style={{ marginTop: 10, color: '#92400e' }}>
                 Nenhuma ação executável. Todos os itens estão iguais ou pendentes.
               </div>
@@ -432,8 +594,55 @@ export default function PartsImportPage() {
                 <Metric label="Failed" value={executionResult.persistResult.failed} />
                 <Metric
                   label="Pending"
-                  value={executionResult.persistResult.conflicts + executionResult.persistResult.invalid}
+                  value={
+                    executionResult.persistResult.conflicts +
+                    executionResult.persistResult.invalid +
+                    executionResult.persistResult.failed
+                  }
                 />
+                <Metric
+                  label="Complement Pending"
+                  value={executionResult.complements.complementPending}
+                />
+              </div>
+              <h3 style={{ marginBottom: 8 }}>Complementos</h3>
+              <div style={{ display: 'grid', gap: 4 }}>
+                <div>Anúncios vinculados: <strong>{executionResult.complements.linkedAds}</strong></div>
+                <div>Anúncios pendentes: <strong>{executionResult.complements.pendingAds}</strong></div>
+                <div>Anúncios com erro: <strong>{executionResult.complements.failedAds}</strong></div>
+                <div>Imagens ML: <strong>{executionResult.complements.mlImages}</strong></div>
+                <div>Imagens planilha: <strong>{executionResult.complements.sheetImages}</strong></div>
+                <div>Sem imagem: <strong>{executionResult.complements.noImage}</strong></div>
+              </div>
+            </section>
+          )}
+
+          {pendingAdItems.length > 0 && (
+            <section style={{ ...sectionStyle, borderColor: '#f59e0b', backgroundColor: '#fffbeb' }}>
+              <h2 style={{ marginTop: 0 }}>Pendências de anúncio</h2>
+              <div style={{ display: 'grid', gap: 10 }}>
+                {pendingAdItems.map((item) => (
+                  <article
+                    key={`ad-pending-${item.row}`}
+                    style={{
+                      padding: 14,
+                      border: '1px solid #fde68a',
+                      borderRadius: 8,
+                      backgroundColor: '#fff',
+                    }}
+                  >
+                    <div><strong>row:</strong> {item.row}</div>
+                    <div><strong>pecaId:</strong> {item.part.pecaId ?? '-'}</div>
+                    <div><strong>mlbId:</strong> {item.adLink?.mlbId ?? '-'}</div>
+                    <div><strong>action:</strong> {item.adLink?.action ?? '-'}</div>
+                    <div><strong>reason:</strong> {item.adLink?.reason ?? '-'}</div>
+                    <div><strong>error:</strong> {item.adLink?.error ?? '-'}</div>
+                    <div>
+                      <strong>chosenMlbId:</strong>{' '}
+                      {item.adLink?.chosenMlbId ?? '-'}
+                    </div>
+                  </article>
+                ))}
               </div>
             </section>
           )}

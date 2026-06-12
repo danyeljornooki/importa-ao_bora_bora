@@ -1,5 +1,6 @@
 export * from './adapters';
 export * from './engine/executeImportWithHistory';
+export * from './engine/executePartImportWithComplements';
 export * from './services';
 export * from './planners';
 export * from './matching';

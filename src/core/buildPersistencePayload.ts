@@ -140,9 +140,9 @@ export const buildPersistencePayload = (
       [key]: {
         id: key,
         status: 'active',
-        channel: options.integration.canal ?? null,
-        name: options.integration.nome ?? null,
-        user_id: options.integration.mercado_livre_brasil?.user_id ?? null,
+        channel: options.integration?.canal ?? null,
+        name: options.integration?.nome ?? null,
+        user_id: options.integration?.mercado_livre_brasil?.user_id ?? null,
         mlb_id: mlbId ?? null,
       },
     };

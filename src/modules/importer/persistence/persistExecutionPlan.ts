@@ -17,6 +17,14 @@ export interface PersistExecutionResult {
   invalid: number;
   failed: number;
   errors: Array<{ row?: number; reason: string; payload?: unknown; targetId?: string }>;
+  rows: PersistExecutionRowResult[];
+}
+
+export interface PersistExecutionRowResult {
+  row: number;
+  action: 'created' | 'updated' | 'skipped' | 'failed';
+  pecaId: string | null;
+  error: string | null;
 }
 
 export interface PersistExecutionOptions {
@@ -64,6 +72,27 @@ export async function persistExecutionPlan(
     invalid: actions.filter((action) => action.type === 'invalid').length,
     failed: 0,
     errors: [],
+    rows: actions.flatMap((action): PersistExecutionRowResult[] => {
+      if (action.type === 'skip') {
+        return [{
+          row: action.row,
+          action: 'skipped',
+          pecaId: action.targetId ?? null,
+          error: null,
+        }];
+      }
+
+      if (action.type === 'conflict' || action.type === 'invalid') {
+        return [{
+          row: action.row,
+          action: action.type === 'invalid' ? 'failed' : 'skipped',
+          pecaId: action.targetId ?? null,
+          error: action.reason,
+        }];
+      }
+
+      return [];
+    }),
   };
 
   if (executableActions.length === 0) {
@@ -92,11 +121,25 @@ export async function persistExecutionPlan(
           historyItem.executionStatus = 'failed';
           historyItem.executionError = executionError;
         }
+        result.rows.push({
+          row: action.row,
+          action: 'failed',
+          pecaId: action.targetId ?? null,
+          error: executionError,
+        });
         continue;
       }
 
       if (action.type === 'create') {
-        const actionResult = await adapter.createItem(payload);
+        let actionResult;
+        try {
+          actionResult = await adapter.createItem(payload);
+        } catch (error) {
+          actionResult = {
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
         if (!actionResult.success) {
           const executionError = actionResult.error ?? 'Create failed';
           result.failed += 1;
@@ -109,10 +152,22 @@ export async function persistExecutionPlan(
             historyItem.executionStatus = 'failed';
             historyItem.executionError = executionError;
           }
+          result.rows.push({
+            row: action.row,
+            action: 'failed',
+            pecaId: null,
+            error: executionError,
+          });
           continue;
         }
 
         result.created += 1;
+        result.rows.push({
+          row: action.row,
+          action: 'created',
+          pecaId: actionResult.id ?? null,
+          error: null,
+        });
         if (historyItem) {
           historyItem.targetId = actionResult.id ?? historyItem.targetId ?? null;
           historyItem.executionStatus = 'success';
@@ -133,10 +188,24 @@ export async function persistExecutionPlan(
             historyItem.executionStatus = 'failed';
             historyItem.executionError = executionError;
           }
+          result.rows.push({
+            row: action.row,
+            action: 'failed',
+            pecaId: null,
+            error: executionError,
+          });
           continue;
         }
 
-        const actionResult = await adapter.updateItem(action.targetId, payload);
+        let actionResult;
+        try {
+          actionResult = await adapter.updateItem(action.targetId, payload);
+        } catch (error) {
+          actionResult = {
+            success: false,
+            error: error instanceof Error ? error.message : String(error),
+          };
+        }
         if (!actionResult.success) {
           const executionError = actionResult.error ?? 'Update failed';
           result.failed += 1;
@@ -150,10 +219,22 @@ export async function persistExecutionPlan(
             historyItem.executionStatus = 'failed';
             historyItem.executionError = executionError;
           }
+          result.rows.push({
+            row: action.row,
+            action: 'failed',
+            pecaId: action.targetId,
+            error: executionError,
+          });
           continue;
         }
 
         result.updated += 1;
+        result.rows.push({
+          row: action.row,
+          action: 'updated',
+          pecaId: actionResult.id ?? action.targetId,
+          error: null,
+        });
         if (historyItem) {
           historyItem.executionStatus = 'success';
         }

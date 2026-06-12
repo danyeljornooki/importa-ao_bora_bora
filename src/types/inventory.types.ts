@@ -9,6 +9,12 @@ export interface ExistingInventoryItem {
   tag_code?: string | null;
 
   marketplace_name?: string | null;
+  name?: string | null;
+  title?: string | null;
+  description?: string | null;
+  sku?: string | null;
+  mercado_libre_brasil_category_id?: string | null;
+  part_category_id?: string | null;
 
   stock_quantity?: number | null;
   price?: number | null;

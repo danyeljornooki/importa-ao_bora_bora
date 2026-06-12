@@ -128,7 +128,12 @@ export const buildExecutionPlan = (
     }
 
     if (decision.action === 'skip') {
-      actions.push({ row: decision.row, type: 'skip', reason: decision.reason ?? 'sem alteracoes' });
+      actions.push({
+        row: decision.row,
+        type: 'skip',
+        reason: decision.reason ?? 'sem alteracoes',
+        targetId: getTargetId(decision.existingPart) ?? undefined,
+      });
       summary.skipped += 1;
       continue;
     }

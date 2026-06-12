@@ -103,6 +103,9 @@ export const buildImportPlan = (previewItems: PreviewItem[]): ImportPlan => {
         row: item.row,
         type: 'skip',
         reason: 'sem alterações',
+        data: item.data,
+        matchedBy: item.matchedBy,
+        confidence: item.confidence,
       });
       summary.unchangedUpdates += 1;
       summary.skipped += 1;
@@ -124,6 +127,9 @@ export const buildImportPlan = (previewItems: PreviewItem[]): ImportPlan => {
         row: item.row,
         type: 'skip',
         reason: item.matchedBy ? 'sem alteraÃ§Ãµes' : 'linha ignorada',
+        data: item.data,
+        matchedBy: item.matchedBy,
+        confidence: item.confidence,
       });
       if (item.matchedBy) {
         summary.unchangedUpdates += 1;

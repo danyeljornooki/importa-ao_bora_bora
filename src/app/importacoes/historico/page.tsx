@@ -7,6 +7,7 @@ import {
   RunStats,
   RunTable,
 } from '../../../components/import-history';
+import { AppNavigation } from '../../../components/AppNavigation';
 import { supabaseImportHistoryAdapter } from '../../../adapters/supabase/supabaseImportHistoryAdapter';
 import type {
   ImportRunFilters,
@@ -64,6 +65,7 @@ export default function ImportHistoryPage() {
   return (
     <main style={{ minHeight: '100vh', padding: '32px 20px 56px', background: '#f1f5f9', fontFamily: 'Arial, sans-serif' }}>
       <div style={{ width: '100%', maxWidth: 1500, margin: '0 auto' }}>
+        <AppNavigation />
         <header style={{ marginBottom: 22 }}>
           <div style={{ color: '#2563eb', fontSize: 13, fontWeight: 700 }}>Importações / Histórico</div>
           <h1 style={{ margin: '6px 0 8px' }}>Histórico de Importações</h1>

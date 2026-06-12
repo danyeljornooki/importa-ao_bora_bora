@@ -12,6 +12,7 @@ export interface ExecuteImportWithHistoryInput {
   adapterName?: string;
   engineVersion?: string;
   debugMatching?: boolean;
+  metadata?: Record<string, unknown>;
   onProgress?: (progress: number) => void;
 }
 
@@ -41,6 +42,7 @@ export const executeImportWithHistory = async (
         fileSize: input.file.size,
         fileType: input.file.type || null,
         debugMatching: input.debugMatching === true,
+        ...(input.metadata ? { ...input.metadata } : {}),
       },
     });
     runId = createdRun.id;

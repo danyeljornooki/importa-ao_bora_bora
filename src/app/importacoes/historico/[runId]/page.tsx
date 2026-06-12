@@ -8,6 +8,7 @@ import {
   RunItemsTable,
   RunSummary,
 } from '../../../../components/import-history';
+import { AppNavigation } from '../../../../components/AppNavigation';
 import { supabaseImportHistoryAdapter } from '../../../../adapters/supabase/supabaseImportHistoryAdapter';
 import type {
   GetImportRunItemsInput,
@@ -144,6 +145,7 @@ export default function ImportRunDetailsPage() {
   return (
     <main style={{ minHeight: '100vh', padding: '32px 20px 56px', background: '#f1f5f9', fontFamily: 'Arial, sans-serif' }}>
       <div style={{ width: '100%', maxWidth: 1400, margin: '0 auto' }}>
+        <AppNavigation />
         <header style={{ marginBottom: 22 }}>
           <div style={{ color: '#2563eb', fontSize: 13, fontWeight: 700 }}>Importações / Histórico / Run</div>
           <h1 style={{ margin: '6px 0 8px' }}>Detalhes da Importação</h1>

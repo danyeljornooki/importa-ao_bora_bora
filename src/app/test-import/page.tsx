@@ -1,6 +1,7 @@
 'use client'
 
 import React, { useState } from 'react';
+import { AppNavigation } from '../../components/AppNavigation';
 import { ImportPlan, ImportActionType } from '../../modules/importer/planner/buildImportPlan';
 import type { PartCanonical } from '../../modules/importer/schemas/part.schema';
 import type { MatchSource } from '../../modules/importer/matchers/matchPart';
@@ -272,6 +273,7 @@ export default function TestImportPage() {
 
   return (
     <main style={{ padding: 16, fontFamily: 'Arial, sans-serif' }}>
+      <AppNavigation />
       <h1>Test Import</h1>
 
       <div style={{ marginBottom: 16, padding: 12, border: '1px solid #ddd', borderRadius: 4 }}>

@@ -1,4 +1,4 @@
-import { PartCanonical } from '../schemas/part.schema';
+import type { PartCanonical } from '../schemas/part.schema';
 
 export interface ValidationResult {
   valid: boolean;
@@ -81,7 +81,7 @@ export const validatePart = (part: PartCanonical): ValidationResult => {
   if (mlbIds.length > 0) {
     const invalidIds = mlbIds.filter((id) => !isValidMlbId(id));
     if (invalidIds.length > 0) {
-      errors.push('MLB IDs inválidos');
+      warnings.push('MLB IDs inválidos; vínculo de anúncio ficará pendente');
     }
     if (mlbIds.length > 1) {
       warnings.push('múltiplos MLB IDs encontrados');

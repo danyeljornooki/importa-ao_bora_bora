@@ -100,13 +100,15 @@ export const createSupabaseInventoryAdapter = (
     payload: InventoryPersistencePayload
   ): Promise<PersistenceActionResult> {
     try {
-      const { error } = await client
+      const { data, error } = await client
         .from('inventory_items')
-        .insert(sanitizeSupabasePayload(payload));
+        .insert(sanitizeSupabasePayload(payload))
+        .select('id')
+        .single();
 
       return error
         ? { success: false, error: error.message }
-        : { success: true };
+        : { success: true, id: requiredString(data?.id, 'id') };
     } catch (error) {
       return { success: false, error: String(error) };
     }
