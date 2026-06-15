@@ -6,3 +6,4 @@ export * from './inventory.types';
 export * from './marketplace.types';
 export * from './marketplaceAd.types';
 export * from './partImportExecution.types';
+export * from './review.types';
