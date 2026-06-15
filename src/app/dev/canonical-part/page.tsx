@@ -4,14 +4,37 @@ import React, { useState } from 'react';
 import { fromExistingInventoryItem } from '../../../domain/part/mappers/fromExistingInventoryItem';
 import { fromPartCanonical } from '../../../domain/part/mappers/fromPartCanonical';
 import { toMongoInventoryShape } from '../../../domain/part/mappers/toMongoInventoryShape';
+import { toSupabaseInventoryShape } from '../../../domain/part/mappers/toSupabaseInventoryShape';
+import {
+  validateCanonicalPart,
+  type CanonicalPartValidationResult,
+} from '../../../domain/part/validateCanonicalPart';
 import type { CanonicalPart } from '../../../domain/part/part.types';
 import type { PartCanonical } from '../../../modules/importer/schemas/part.schema';
 import type { ExistingInventoryItem } from '../../../types/inventory.types';
 
 interface ConversionResult {
   canonicalPart: CanonicalPart;
+  validation: CanonicalPartValidationResult;
+  supabaseInventoryShape: Record<string, unknown>;
   mongoInventoryShape: Record<string, unknown>;
 }
+
+const comparisonFields = [
+  'store_id',
+  'id_int',
+  'id_string',
+  'code',
+  'marketplace_name',
+  'stock_quantity',
+  'price',
+  'marketplace_price',
+  'status',
+  'storage_location_name',
+  'description',
+  'image_count',
+  'integrations',
+] as const;
 
 const partCanonicalExample = JSON.stringify(
   {
@@ -123,6 +146,103 @@ const JsonPreview = ({
   </div>
 );
 
+const valueKey = (value: unknown): string => JSON.stringify(value ?? null);
+
+const ShapeComparison = ({
+  supabase,
+  mongo,
+}: {
+  supabase: Record<string, unknown>;
+  mongo: Record<string, unknown>;
+}) => (
+  <div>
+    <h3 style={{ marginBottom: 8 }}>Comparação de campos principais</h3>
+    <div style={{ overflowX: 'auto' }}>
+      <table
+        style={{
+          width: '100%',
+          borderCollapse: 'collapse',
+          backgroundColor: '#fff',
+        }}
+      >
+        <thead>
+          <tr style={{ backgroundColor: '#f8fafc', textAlign: 'left' }}>
+            {['Campo', 'Supabase', 'Mongo', 'Resultado'].map((heading) => (
+              <th
+                key={heading}
+                style={{ padding: 10, borderBottom: '1px solid #cbd5e1' }}
+              >
+                {heading}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {comparisonFields.map((field) => {
+            const supabaseValue = supabase[field] ?? null;
+            const mongoValue = mongo[field] ?? null;
+            const equal = valueKey(supabaseValue) === valueKey(mongoValue);
+
+            return (
+              <tr key={field}>
+                <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>
+                  <code>{field}</code>
+                </td>
+                <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>
+                  <code>{valueKey(supabaseValue)}</code>
+                </td>
+                <td style={{ padding: 10, borderBottom: '1px solid #e2e8f0' }}>
+                  <code>{valueKey(mongoValue)}</code>
+                </td>
+                <td
+                  style={{
+                    padding: 10,
+                    borderBottom: '1px solid #e2e8f0',
+                    color: equal ? '#166534' : '#b45309',
+                    fontWeight: 700,
+                  }}
+                >
+                  {equal ? 'Igual' : 'Diferente'}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  </div>
+);
+
+const ValidationPreview = ({
+  validation,
+}: {
+  validation: CanonicalPartValidationResult;
+}) => (
+  <div>
+    <h3 style={{ marginBottom: 8 }}>validateCanonicalPart()</h3>
+    <div
+      style={{
+        padding: 14,
+        border: `1px solid ${validation.valid ? '#86efac' : '#fca5a5'}`,
+        borderRadius: 6,
+        backgroundColor: validation.valid ? '#f0fdf4' : '#fef2f2',
+      }}
+    >
+      <div
+        style={{
+          color: validation.valid ? '#166534' : '#b91c1c',
+          fontWeight: 700,
+        }}
+      >
+        {validation.valid ? 'CanonicalPart válido' : 'CanonicalPart inválido'}
+      </div>
+      <pre style={{ marginBottom: 0, whiteSpace: 'pre-wrap' }}>
+        {JSON.stringify(validation, null, 2)}
+      </pre>
+    </div>
+  </div>
+);
+
 const DebugSummary = ({ part }: { part: CanonicalPart }) => {
   const mongo = toMongoInventoryShape(part);
 
@@ -198,6 +318,11 @@ const ConversionOutput = ({
   return (
     <div style={{ display: 'grid', gap: 18, marginTop: 18 }}>
       <DebugSummary part={result.canonicalPart} />
+      <ValidationPreview validation={result.validation} />
+      <ShapeComparison
+        supabase={result.supabaseInventoryShape}
+        mongo={result.mongoInventoryShape}
+      />
       <div
         style={{
           display: 'grid',
@@ -206,6 +331,10 @@ const ConversionOutput = ({
         }}
       >
         <JsonPreview title="CanonicalPart" value={result.canonicalPart} />
+        <JsonPreview
+          title="SupabaseInventoryShape"
+          value={result.supabaseInventoryShape}
+        />
         <JsonPreview
           title="MongoInventoryShape"
           value={result.mongoInventoryShape}
@@ -247,6 +376,8 @@ export default function CanonicalPartCompatibilityPage() {
 
       setPartResult({
         canonicalPart,
+        validation: validateCanonicalPart(canonicalPart),
+        supabaseInventoryShape: toSupabaseInventoryShape(canonicalPart),
         mongoInventoryShape: toMongoInventoryShape(canonicalPart),
       });
     } catch (error) {
@@ -267,6 +398,8 @@ export default function CanonicalPartCompatibilityPage() {
 
       setExistingResult({
         canonicalPart,
+        validation: validateCanonicalPart(canonicalPart),
+        supabaseInventoryShape: toSupabaseInventoryShape(canonicalPart),
         mongoInventoryShape: toMongoInventoryShape(canonicalPart),
       });
     } catch (error) {

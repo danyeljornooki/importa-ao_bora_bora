@@ -44,9 +44,9 @@ export interface PartImportImageResult {
 
 export interface PartImportRowExecutionResult {
   row: number;
-  part: PartImportResult;
-  adLink?: PartImportAdLinkResult;
-  images?: PartImportImageResult;
+  partResult: PartImportResult;
+  adLinkResult: PartImportAdLinkResult;
+  imagePlan: PartImportImageResult;
   warnings: string[];
 }
 
@@ -58,4 +58,13 @@ export interface PartImportComplementsSummary {
   mlImages: number;
   sheetImages: number;
   noImage: number;
+}
+
+export interface PartImportCommitSummary
+  extends PartImportComplementsSummary {
+  created: number;
+  updated: number;
+  skipped: number;
+  failed: number;
+  pending: number;
 }

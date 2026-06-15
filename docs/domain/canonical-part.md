@@ -1,5 +1,54 @@
 # CanonicalPart
 
+## Validacao runtime e shapes de persistencia
+
+`validateCanonicalPart` verifica invariantes minimas do dominio sem substituir
+o `validatePart` da Import Engine atual.
+
+A validacao exige:
+
+- `identity.storeId`;
+- `identity.title`;
+- preco numerico maior ou igual a zero;
+- estoque inteiro maior ou igual a zero;
+- pelo menos um identificador entre `idInt`, `idString`, `code` ou
+  `marketplaceId`;
+- URLs de imagem com protocolo HTTP ou HTTPS;
+- `marketplace` e `marketplaceId` em cada vinculo;
+- status calculado ou informado.
+
+Ausencia de imagens, ausencia de vinculos de marketplace e ausencia de
+`integrationId` em um vinculo sao warnings, nao erros da peca.
+
+`toSupabaseInventoryShape` converte o dominio para o shape atualmente esperado
+por `inventory_items`. O mapper cobre identidade, valores comerciais,
+localizacao, descricao, categorias, veiculo, dimensoes, imagens e integracoes.
+Imagens sao convertidas para objetos:
+
+```ts
+{
+  url,
+  thumbnail_url,
+  source,
+  ordem
+}
+```
+
+`toMongoInventoryShape` continua representando o shape historico do inventario
+Mongo. Nenhum dos dois mappers esta conectado a persistencia nesta etapa.
+
+`CanonicalPart` descreve o significado da peca. `SupabaseInventoryShape` e
+`MongoInventoryShape` descrevem formatos de armazenamento. O dominio nao
+conhece tabelas, clientes de banco ou contratos de Supabase, Mongo e Symfony.
+
+Quando um vinculo possui `integrationId`, ele e usado na chave de integracoes.
+Quando nao possui, o fallback e `${marketplace}:${marketplaceId}`, sem inventar
+um identificador operacional.
+
+A pagina `/dev/canonical-part` apresenta o resultado da validacao, os dois
+shapes e a comparacao dos principais campos. Ela trabalha somente em memoria e
+nao altera o fluxo oficial.
+
 `CanonicalPart` é o modelo de domínio oficial de uma peça na DriveParts. Ele
 representa a peça sem depender do formato da planilha, das tabelas do Supabase,
 dos documentos do Mongo, de contratos do Symfony ou de respostas de

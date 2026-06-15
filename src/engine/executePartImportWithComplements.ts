@@ -21,6 +21,7 @@ import type {
 import type { MarketplaceAdRegistryAdapter } from '../types/marketplaceAd.types';
 import type {
   PartImportAdLinkResult,
+  PartImportCommitSummary,
   PartImportComplementsSummary,
   PartImportImageResult,
   PartImportRowExecutionResult,
@@ -52,7 +53,8 @@ export interface ExecutePartImportWithComplementsResult {
   importResult: RunImportResult;
   persistResult: PersistExecutionResult;
   rows: PartImportRowExecutionResult[];
-  complements: PartImportComplementsSummary;
+  complementSummary: PartImportComplementsSummary;
+  summary: PartImportCommitSummary;
 }
 
 const errorMessage = (error: unknown): string =>
@@ -138,11 +140,12 @@ const mergeHistoryPayload = (
 
   return {
     ...base,
-    partResult: { ...result.part },
-    adLinkResult: result.adLink ? { ...result.adLink } : null,
-    imagePlan: result.images
-      ? { ...result.images, urls: [...result.images.urls] }
-      : null,
+    partResult: { ...result.partResult },
+    adLinkResult: { ...result.adLinkResult },
+    imagePlan: {
+      ...result.imagePlan,
+      urls: [...result.imagePlan.urls],
+    },
   };
 };
 
@@ -151,25 +154,36 @@ const summarizeComplements = (
 ): PartImportComplementsSummary => ({
   complementPending:
     rows.filter((row) =>
-      row.adLink &&
-      ['pending', 'conflict', 'invalid'].includes(row.adLink.action)
+      ['pending', 'conflict', 'invalid'].includes(row.adLinkResult.action)
     ).length +
     rows.filter((row) =>
-      row.images &&
-      ['failed', 'pending'].includes(row.images.action)
+      ['failed', 'pending'].includes(row.imagePlan.action)
     ).length,
   linkedAds: rows.filter((row) =>
-    row.adLink &&
-    ['inserted', 'updated', 'linked'].includes(row.adLink.action)
+    ['inserted', 'updated', 'linked'].includes(row.adLinkResult.action)
   ).length,
-  pendingAds: rows.filter((row) => row.adLink?.action === 'pending').length,
+  pendingAds: rows.filter((row) => row.adLinkResult.action === 'pending').length,
   failedAds: rows.filter((row) =>
-    row.adLink &&
-    ['failed', 'conflict', 'invalid'].includes(row.adLink.action)
+    ['failed', 'conflict', 'invalid'].includes(row.adLinkResult.action)
   ).length,
-  mlImages: rows.filter((row) => row.images?.action === 'used_ml').length,
-  sheetImages: rows.filter((row) => row.images?.action === 'used_sheet').length,
-  noImage: rows.filter((row) => row.images?.action === 'no_image').length,
+  mlImages: rows.filter((row) => row.imagePlan.action === 'used_ml').length,
+  sheetImages: rows.filter((row) => row.imagePlan.action === 'used_sheet').length,
+  noImage: rows.filter((row) => row.imagePlan.action === 'no_image').length,
+});
+
+const buildCommitSummary = (
+  persistResult: PersistExecutionResult,
+  complementSummary: PartImportComplementsSummary
+): PartImportCommitSummary => ({
+  created: persistResult.created,
+  updated: persistResult.updated,
+  skipped: persistResult.skipped,
+  failed: persistResult.failed,
+  pending:
+    persistResult.conflicts +
+    persistResult.invalid +
+    persistResult.failed,
+  ...complementSummary,
 });
 
 const buildHistoryItems = (
@@ -188,7 +202,7 @@ const buildHistoryItems = (
     return {
       row: action.row,
       action: action.type,
-      targetId: result.part.pecaId ?? action.targetId ?? null,
+      targetId: result.partResult.pecaId ?? action.targetId ?? null,
       reason: action.reason,
       payload: mergeHistoryPayload(
         action.payload,
@@ -196,14 +210,14 @@ const buildHistoryItems = (
         result
       ),
       warnings: [...result.warnings],
-      errors: result.part.error ? [result.part.error] : [],
+      errors: result.partResult.error ? [result.partResult.error] : [],
       executionStatus:
-        result.part.action === 'failed'
+        result.partResult.action === 'failed'
           ? 'failed'
-          : result.part.action === 'skipped'
+          : result.partResult.action === 'skipped'
             ? 'skipped'
             : 'success',
-      executionError: result.part.error ?? null,
+      executionError: result.partResult.error ?? null,
     };
   });
 };
@@ -402,12 +416,12 @@ export const executePartImportWithComplements = async (
       ) {
         rows.push({
           row: action.row,
-          part: {
+          partResult: {
             action: persisted.action,
             pecaId: persisted.pecaId,
             error: persisted.error,
           },
-          adLink: {
+          adLinkResult: {
             action: 'skipped',
             mlbId: null,
             chosenMlbId: null,
@@ -415,7 +429,7 @@ export const executePartImportWithComplements = async (
             reason: 'peça não disponível para complementos',
             error: null,
           },
-          images: skippedImageResult(),
+          imagePlan: skippedImageResult(),
           warnings,
         });
         continue;
@@ -432,18 +446,19 @@ export const executePartImportWithComplements = async (
 
       rows.push({
         row: action.row,
-        part: {
+        partResult: {
           action: persisted.action,
           pecaId: persisted.pecaId,
           error: persisted.error,
         },
-        adLink: adLink.result,
-        images,
+        adLinkResult: adLink.result,
+        imagePlan: images,
         warnings: [...new Set(warnings)],
       });
     }
 
-    const complements = summarizeComplements(rows);
+    const complementSummary = summarizeComplements(rows);
+    const summary = buildCommitSummary(persistResult, complementSummary);
     await input.historyAdapter.saveRunItems(
       runId,
       buildHistoryItems(
@@ -479,7 +494,8 @@ export const executePartImportWithComplements = async (
           invalid: persistResult.invalid,
           failed: persistResult.failed,
         },
-        complements: { ...complements },
+        commit: { ...summary },
+        complements: { ...complementSummary },
       },
     });
 
@@ -488,7 +504,8 @@ export const executePartImportWithComplements = async (
       importResult: input.analysisResult,
       persistResult,
       rows,
-      complements,
+      complementSummary,
+      summary,
     };
   } catch (error) {
     if (runId) {

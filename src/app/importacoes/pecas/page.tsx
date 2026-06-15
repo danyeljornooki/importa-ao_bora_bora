@@ -45,6 +45,19 @@ interface PendingItem {
   conflictDetails?: ConflictDetail;
 }
 
+type ChecklistKey =
+  | 'integration'
+  | 'file'
+  | 'complements'
+  | 'rejectedRows';
+
+const initialChecklist: Record<ChecklistKey, boolean> = {
+  integration: false,
+  file: false,
+  complements: false,
+  rejectedRows: false,
+};
+
 const sectionStyle: React.CSSProperties = {
   padding: 20,
   border: '1px solid #dbe2ea',
@@ -164,6 +177,8 @@ export default function PartsImportPage() {
   const [hasExecuted, setHasExecuted] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [executionProgress, setExecutionProgress] = useState<number>(0);
+  const [checklist, setChecklist] =
+    useState<Record<ChecklistKey, boolean>>(initialChecklist);
 
   const clearResults = () => {
     setAnalysisResult(null);
@@ -172,6 +187,7 @@ export default function PartsImportPage() {
     setHasExecuted(false);
     setError(null);
     setExecutionProgress(0);
+    setChecklist(initialChecklist);
   };
 
   const handleLoadIntegration = async () => {
@@ -208,6 +224,7 @@ export default function PartsImportPage() {
     setError(null);
     setExecutionResult(null);
     setHasExecuted(false);
+    setChecklist(initialChecklist);
 
     try {
       const result = await runImport(await selectedFile.arrayBuffer(), {
@@ -275,23 +292,37 @@ export default function PartsImportPage() {
   const summary = analysisResult?.summary;
   const pendingItems = buildPendingItems(analysisResult);
   const visiblePendingItems = pendingItems.slice(0, 20);
-  const complementEligibleActions =
-    analysisResult?.executionPlan.actions.filter((action) =>
+  const executableActions =
+    (summary?.creates ?? 0) + (summary?.updates ?? 0);
+  const complementPreviewActions =
+    analysisResult?.importPlan.actions.filter((action) =>
       action.type === 'create' ||
       action.type === 'update' ||
       action.type === 'skip'
-    ).length ?? 0;
+    ) ?? [];
+  const pendingAdPreview = complementPreviewActions.filter((action) =>
+    Array.isArray(action.data?.mlb_ids) &&
+    action.data.mlb_ids.some((value) => value.trim() !== '')
+  ).length;
+  const sheetImagePreview = complementPreviewActions.filter((action) =>
+    Array.isArray(action.data?.image_urls) &&
+    action.data.image_urls.some((value) => value.trim() !== '')
+  ).length;
+  const noImagePreview = complementPreviewActions.length - sheetImagePreview;
+  const checklistComplete = Object.values(checklist).every(Boolean);
   const canExecute =
     hasAnalyzed &&
     !hasExecuted &&
     executionContext !== null &&
-    complementEligibleActions > 0 &&
+    executableActions > 0 &&
+    checklistComplete &&
     !isAnalyzing &&
     !isExecuting;
   const pendingAdItems =
     executionResult?.rows.filter((row) =>
-      row.adLink &&
-      ['pending', 'failed', 'conflict', 'invalid'].includes(row.adLink.action)
+      ['pending', 'failed', 'conflict', 'invalid'].includes(
+        row.adLinkResult.action
+      )
     ) ?? [];
 
   return (
@@ -533,6 +564,95 @@ export default function PartsImportPage() {
             </section>
           )}
 
+          {hasAnalyzed && summary && (
+            <section style={sectionStyle}>
+              <h2 style={{ marginTop: 0 }}>Checklist antes de executar</h2>
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+                  gap: 10,
+                }}
+              >
+                <Metric label="Integration ID" value={executionContext?.integrationId ?? '-'} />
+                <Metric label="Loja / storeId" value={executionContext?.storeId ?? '-'} />
+                <Metric label="Nome da integração" value={executionContext?.integrationName ?? '-'} />
+                <Metric label="Arquivo" value={selectedFile?.name ?? '-'} />
+                <Metric label="Total de linhas" value={summary.totalRows} />
+                <Metric label="Creates" value={summary.creates} />
+                <Metric label="Updates" value={summary.updates} />
+                <Metric label="Skipped" value={summary.skipped} />
+                <Metric label="Conflicts" value={summary.conflicts} />
+                <Metric label="Invalid" value={summary.invalid} />
+                <Metric label="Complement Pending" value={pendingAdPreview} />
+                <Metric label="Anúncios pendentes" value={pendingAdPreview} />
+                <Metric label="Imagens ML" value="A confirmar" />
+                <Metric label="Imagens planilha" value={sheetImagePreview} />
+                <Metric label="Sem imagem" value={noImagePreview} />
+              </div>
+
+              <div
+                style={{
+                  marginTop: 12,
+                  padding: 12,
+                  borderRadius: 6,
+                  backgroundColor: '#eff6ff',
+                  color: '#1e3a8a',
+                  fontSize: 13,
+                }}
+              >
+                Prévia operacional: anúncios e imagens do Mercado Livre são
+                resolvidos durante o commit. Os valores finais aparecem no
+                resultado da execução.
+              </div>
+
+              <div style={{ display: 'grid', gap: 8, marginTop: 14 }}>
+                {summary.creates > 0 && (
+                  <div style={{ color: '#92400e' }}>Novas peças serão criadas.</div>
+                )}
+                {summary.updates > 0 && (
+                  <div style={{ color: '#92400e' }}>Peças existentes serão atualizadas.</div>
+                )}
+                {summary.conflicts > 0 && (
+                  <div style={{ color: '#b91c1c' }}>Conflitos não serão importados.</div>
+                )}
+                {summary.invalid > 0 && (
+                  <div style={{ color: '#b91c1c' }}>Linhas inválidas não serão importadas.</div>
+                )}
+                {pendingAdPreview > 0 && (
+                  <div style={{ color: '#92400e' }}>Alguns complementos ficarão pendentes.</div>
+                )}
+              </div>
+
+              <div style={{ display: 'grid', gap: 10, marginTop: 18 }}>
+                {([
+                  ['integration', 'Conferi que a integração/loja está correta'],
+                  ['file', 'Conferi que o arquivo selecionado está correto'],
+                  ['complements', 'Entendo que pendências complementares não bloqueiam a peça'],
+                  ['rejectedRows', 'Entendo que conflitos/linhas inválidas não serão importados'],
+                ] as Array<[ChecklistKey, string]>).map(([key, label]) => (
+                  <label
+                    key={key}
+                    style={{ display: 'flex', alignItems: 'flex-start', gap: 8 }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checklist[key]}
+                      disabled={hasExecuted || isExecuting}
+                      onChange={(event) =>
+                        setChecklist((current) => ({
+                          ...current,
+                          [key]: event.target.checked,
+                        }))
+                      }
+                    />
+                    <span>{label}</span>
+                  </label>
+                ))}
+              </div>
+            </section>
+          )}
+
           <section style={sectionStyle}>
             <h2 style={{ marginTop: 0 }}>{pendingItems.length > 0 ? '5' : '4'}. Execução</h2>
             <div
@@ -561,9 +681,9 @@ export default function PartsImportPage() {
               {isExecuting ? 'Executando Importação...' : 'Executar Importação'}
             </button>
 
-            {hasAnalyzed && complementEligibleActions === 0 && (
+            {hasAnalyzed && executableActions === 0 && (
               <div style={{ marginTop: 10, color: '#92400e' }}>
-                Nenhuma ação executável. Todos os itens estão iguais ou pendentes.
+                Nenhuma ação executável. Nada será gravado.
               </div>
             )}
             {isExecuting && (
@@ -588,31 +708,24 @@ export default function PartsImportPage() {
                   marginTop: 16,
                 }}
               >
-                <Metric label="Created" value={executionResult.persistResult.created} />
-                <Metric label="Updated" value={executionResult.persistResult.updated} />
-                <Metric label="Skipped" value={executionResult.persistResult.skipped} />
-                <Metric label="Failed" value={executionResult.persistResult.failed} />
-                <Metric
-                  label="Pending"
-                  value={
-                    executionResult.persistResult.conflicts +
-                    executionResult.persistResult.invalid +
-                    executionResult.persistResult.failed
-                  }
-                />
+                <Metric label="Created" value={executionResult.summary.created} />
+                <Metric label="Updated" value={executionResult.summary.updated} />
+                <Metric label="Skipped" value={executionResult.summary.skipped} />
+                <Metric label="Failed" value={executionResult.summary.failed} />
+                <Metric label="Pending" value={executionResult.summary.pending} />
                 <Metric
                   label="Complement Pending"
-                  value={executionResult.complements.complementPending}
+                  value={executionResult.summary.complementPending}
                 />
               </div>
               <h3 style={{ marginBottom: 8 }}>Complementos</h3>
               <div style={{ display: 'grid', gap: 4 }}>
-                <div>Anúncios vinculados: <strong>{executionResult.complements.linkedAds}</strong></div>
-                <div>Anúncios pendentes: <strong>{executionResult.complements.pendingAds}</strong></div>
-                <div>Anúncios com erro: <strong>{executionResult.complements.failedAds}</strong></div>
-                <div>Imagens ML: <strong>{executionResult.complements.mlImages}</strong></div>
-                <div>Imagens planilha: <strong>{executionResult.complements.sheetImages}</strong></div>
-                <div>Sem imagem: <strong>{executionResult.complements.noImage}</strong></div>
+                <div>Anúncios vinculados: <strong>{executionResult.summary.linkedAds}</strong></div>
+                <div>Anúncios pendentes: <strong>{executionResult.summary.pendingAds}</strong></div>
+                <div>Anúncios com erro: <strong>{executionResult.summary.failedAds}</strong></div>
+                <div>Imagens ML: <strong>{executionResult.summary.mlImages}</strong></div>
+                <div>Imagens planilha: <strong>{executionResult.summary.sheetImages}</strong></div>
+                <div>Sem imagem: <strong>{executionResult.summary.noImage}</strong></div>
               </div>
             </section>
           )}
@@ -632,14 +745,14 @@ export default function PartsImportPage() {
                     }}
                   >
                     <div><strong>row:</strong> {item.row}</div>
-                    <div><strong>pecaId:</strong> {item.part.pecaId ?? '-'}</div>
-                    <div><strong>mlbId:</strong> {item.adLink?.mlbId ?? '-'}</div>
-                    <div><strong>action:</strong> {item.adLink?.action ?? '-'}</div>
-                    <div><strong>reason:</strong> {item.adLink?.reason ?? '-'}</div>
-                    <div><strong>error:</strong> {item.adLink?.error ?? '-'}</div>
+                    <div><strong>pecaId:</strong> {item.partResult.pecaId ?? '-'}</div>
+                    <div><strong>mlbId:</strong> {item.adLinkResult.mlbId ?? '-'}</div>
+                    <div><strong>action:</strong> {item.adLinkResult.action}</div>
+                    <div><strong>reason:</strong> {item.adLinkResult.reason ?? '-'}</div>
+                    <div><strong>error:</strong> {item.adLinkResult.error ?? '-'}</div>
                     <div>
                       <strong>chosenMlbId:</strong>{' '}
-                      {item.adLink?.chosenMlbId ?? '-'}
+                      {item.adLinkResult.chosenMlbId ?? '-'}
                     </div>
                   </article>
                 ))}
