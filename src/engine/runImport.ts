@@ -39,6 +39,13 @@ export interface ExcludedRow {
   reason: string;
 }
 
+export interface SemMlbRow {
+  row: number;
+  id_int: number | string | null;
+  code: string | null;
+  title: string | null;
+}
+
 export interface FailedMatch {
   row: number;
   code?: string | null;
@@ -153,6 +160,8 @@ export interface RunImportResult {
   /** Linhas removidas por regra de filtro do usuario (nao entram no pipeline). */
   excluded: number;
   excludedRows: ExcludedRow[];
+  /** Pecas validas que ficaram sem nenhum MLB (entram, mas nao vinculam anuncio). */
+  semMlbRows: SemMlbRow[];
   // Mantendo para compatibilidade
   totalRows: number;
   previewItems: any[];
@@ -282,6 +291,8 @@ export const runImport = async (
   const rowFilters = options.rowFilters ?? [];
   const columnMapping = options.columnMapping;
   const excludedRows: ExcludedRow[] = [];
+  const semMlbRows: SemMlbRow[] = [];
+  const SEM_MLB_CAP = 1000;
 
   const rows: RowState[] = [];
   parsed.rows.forEach((row, index) => {
@@ -432,7 +443,17 @@ export const runImport = async (
     if (qualityFlags.sem_descricao) qualityStats.sem_descricao += 1;
     if (qualityFlags.sem_imagem) qualityStats.sem_imagem += 1;
     if (qualityFlags.sem_localizacao) qualityStats.sem_localizacao += 1;
-    if (qualityFlags.sem_mlb) qualityStats.sem_mlb += 1;
+    if (qualityFlags.sem_mlb) {
+      qualityStats.sem_mlb += 1;
+      if (semMlbRows.length < SEM_MLB_CAP) {
+        semMlbRows.push({
+          row: rowState.row,
+          id_int: normalized.id_int ?? null,
+          code: normalized.code ?? null,
+          title: normalized.title ?? null,
+        });
+      }
+    }
     if (qualityFlags.estoque_zerado) qualityStats.estoque_zerado += 1;
 
     if (match.action === 'update' && match.existingPart) {
@@ -678,6 +699,7 @@ export const runImport = async (
       })),
     excluded: excludedRows.length,
     excludedRows,
+    semMlbRows,
     // Mantendo para compatibilidade
     totalRows,
     previewItems: previewItems.slice(0, 20).map((p) => ({ ...p })),
