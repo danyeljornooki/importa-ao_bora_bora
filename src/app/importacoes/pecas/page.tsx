@@ -24,6 +24,43 @@ import {
 import type { ImportActionType } from '../../../modules/importer/planner/buildImportPlan';
 import type { PartCanonical } from '../../../modules/importer/schemas/part.schema';
 import type { ImportExecutionContext } from '../../../types/integration.types';
+import { parseExcel } from '../../../core/importer/parse/parseExcel';
+import {
+  suggestFieldMapping,
+  type ColumnMapping,
+} from '../../../modules/importer/suggestFieldMapping';
+import {
+  canonicalFieldKeys,
+  type CanonicalField,
+} from '../../../modules/importer/fieldAliases';
+import type {
+  RowFilterRule,
+  RowFilterCondition,
+} from '../../../modules/importer/rowFilters';
+
+const FIELD_LABELS: Record<CanonicalField, string> = {
+  code: 'Código',
+  id_int: 'ID interno (id_int)',
+  title: 'Título / Nome',
+  price: 'Preço',
+  stock_quantity: 'Quantidade / Estoque',
+  location: 'Localização',
+  description: 'Descrição',
+  mlb_ids: 'Código(s) MLB',
+  image_urls: 'Imagens (URLs)',
+};
+
+const CONDITION_LABELS: Record<RowFilterCondition, string> = {
+  equals: 'é igual a',
+  notEquals: 'é diferente de',
+  contains: 'contém',
+  notContains: 'não contém',
+  isEmpty: 'está vazio',
+  isNotEmpty: 'está preenchido',
+};
+
+const conditionNeedsValue = (condition: RowFilterCondition): boolean =>
+  condition !== 'isEmpty' && condition !== 'isNotEmpty';
 
 interface PreviewItem {
   row: number;
@@ -180,6 +217,112 @@ export default function PartsImportPage() {
   const [checklist, setChecklist] =
     useState<Record<ChecklistKey, boolean>>(initialChecklist);
 
+  // Mapeamento assistido de colunas
+  const [headers, setHeaders] = useState<string[]>([]);
+  const [columnMapping, setColumnMapping] = useState<ColumnMapping>({});
+  const [mappingScores, setMappingScores] = useState<Record<string, number>>({});
+  const [sampleRows, setSampleRows] = useState<Record<string, unknown>[]>([]);
+  const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
+  const [aiMessage, setAiMessage] = useState<string | null>(null);
+
+  // Regras de importação configuráveis pelo usuário
+  const [rowFilters, setRowFilters] = useState<RowFilterRule[]>([]);
+  const [newFilter, setNewFilter] = useState<{
+    column: string;
+    condition: RowFilterCondition;
+    value: string;
+  }>({ column: '', condition: 'equals', value: '' });
+
+  const handleFileSelected = async (file: File | null) => {
+    setSelectedFile(file);
+    clearResults();
+    setHeaders([]);
+    setColumnMapping({});
+    setMappingScores({});
+    setSampleRows([]);
+    setAiMessage(null);
+    if (!file) return;
+    try {
+      const parsed = await parseExcel(file as any);
+      const headerSet = new Set<string>();
+      parsed.rows.forEach((row) =>
+        Object.keys(row as Record<string, unknown>).forEach((k) => headerSet.add(k))
+      );
+      const headerList = Array.from(headerSet);
+      setHeaders(headerList);
+      setSampleRows((parsed.rows as Record<string, unknown>[]).slice(0, 10));
+
+      const { suggestions } = suggestFieldMapping(headerList);
+      const mapping: ColumnMapping = {};
+      const scores: Record<string, number> = {};
+      for (const s of suggestions) {
+        mapping[s.field] = s.header;
+        scores[s.field] = s.score;
+      }
+      setColumnMapping(mapping);
+      setMappingScores(scores);
+    } catch {
+      // se falhar o parse aqui, o erro real aparece na análise
+    }
+  };
+
+  const handleAiSuggest = async () => {
+    if (headers.length === 0) return;
+    setIsAiLoading(true);
+    setAiMessage(null);
+    try {
+      const response = await fetch('/api/import/suggest-mapping', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ headers, sample: sampleRows }),
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        setAiMessage(data?.error ?? `Erro ${response.status}`);
+        return;
+      }
+      const aiMapping = (data?.mapping ?? {}) as ColumnMapping;
+      const applied = Object.keys(aiMapping).length;
+      if (applied === 0) {
+        setAiMessage('A IA não sugeriu nenhum mapeamento novo.');
+        return;
+      }
+      setColumnMapping((current) => ({ ...current, ...aiMapping }));
+      setMappingScores((current) => {
+        const next = { ...current };
+        for (const field of Object.keys(aiMapping)) next[field] = 1;
+        return next;
+      });
+      setHasAnalyzed(false);
+      setAnalysisResult(null);
+      setAiMessage(`IA sugeriu ${applied} mapeamento(s). Revise antes de analisar.`);
+    } catch (err) {
+      setAiMessage(err instanceof Error ? err.message : String(err));
+    } finally {
+      setIsAiLoading(false);
+    }
+  };
+
+  const addRowFilter = () => {
+    const column = newFilter.column.trim();
+    if (!column) return;
+    const rule: RowFilterRule = {
+      column,
+      condition: newFilter.condition,
+      ...(conditionNeedsValue(newFilter.condition) ? { value: newFilter.value } : {}),
+    };
+    setRowFilters((current) => [...current, rule]);
+    setNewFilter({ column: '', condition: 'equals', value: '' });
+    setHasAnalyzed(false);
+    setAnalysisResult(null);
+  };
+
+  const removeRowFilter = (index: number) => {
+    setRowFilters((current) => current.filter((_, i) => i !== index));
+    setHasAnalyzed(false);
+    setAnalysisResult(null);
+  };
+
   const clearResults = () => {
     setAnalysisResult(null);
     setExecutionResult(null);
@@ -232,6 +375,8 @@ export default function PartsImportPage() {
         adapter: supabaseInventoryAdapter,
         integrationId: executionContext.integrationId,
         debugMatching: debugMode,
+        rowFilters,
+        columnMapping,
       });
 
       setAnalysisResult(result);
@@ -274,6 +419,11 @@ export default function PartsImportPage() {
             integrationName: executionContext.integrationName ?? null,
             marketplaceUserId: executionContext.marketplace?.userId ?? null,
             marketplaceNickname: marketplaceNickname(executionContext),
+            // Auditoria: regras usadas e linhas excluídas por elas ficam no import_run.
+            rowFilters,
+            excludedCount: analysisResult.excluded,
+            excludedRows: analysisResult.excludedRows,
+            columnMapping,
           },
           onProgress: setExecutionProgress,
         },
@@ -473,8 +623,7 @@ export default function PartsImportPage() {
                 accept=".xlsx,.xls,.csv"
                 disabled={isAnalyzing || isExecuting}
                 onChange={(event) => {
-                  setSelectedFile(event.target.files?.[0] ?? null);
-                  clearResults();
+                  void handleFileSelected(event.target.files?.[0] ?? null);
                 }}
               />
             </label>
@@ -482,6 +631,211 @@ export default function PartsImportPage() {
               Arquivo selecionado: <strong>{selectedFile?.name ?? 'nenhum arquivo'}</strong>
             </div>
           </section>
+
+          {headers.length > 0 && (
+            <section style={sectionStyle}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+                <h2 style={{ marginTop: 0, marginBottom: 0 }}>Mapeamento de Colunas</h2>
+                <button
+                  type="button"
+                  onClick={handleAiSuggest}
+                  disabled={isAiLoading || isAnalyzing || isExecuting || hasExecuted}
+                  style={{
+                    ...primaryButtonStyle,
+                    backgroundColor: '#7c3aed',
+                    opacity: isAiLoading ? 0.6 : 1,
+                    cursor: isAiLoading ? 'wait' : 'pointer',
+                  }}
+                >
+                  {isAiLoading ? 'Consultando IA...' : '🤖 Melhorar com IA'}
+                </button>
+              </div>
+              <p style={{ margin: '8px 0 14px', color: '#475569', fontSize: 14 }}>
+                Detectamos as colunas por similaridade. Confira e ajuste antes de analisar —
+                cada cliente nomeia as colunas do seu jeito. Use a IA para os casos difíceis.
+              </p>
+              {aiMessage && (
+                <div style={{ marginBottom: 12, padding: 10, borderRadius: 6, backgroundColor: '#f5f3ff', color: '#5b21b6', fontSize: 13 }}>
+                  {aiMessage}
+                </div>
+              )}
+              <div style={{ display: 'grid', gap: 10 }}>
+                {canonicalFieldKeys.map((field) => {
+                  const score = mappingScores[field] ?? 0;
+                  const selected = columnMapping[field] ?? '';
+                  return (
+                    <div
+                      key={field}
+                      style={{
+                        display: 'grid',
+                        gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.4fr) auto',
+                        gap: 10,
+                        alignItems: 'center',
+                      }}
+                    >
+                      <span style={{ fontSize: 14, fontWeight: 600, color: '#334155' }}>
+                        {FIELD_LABELS[field]}
+                      </span>
+                      <select
+                        value={selected}
+                        disabled={isAnalyzing || isExecuting || hasExecuted}
+                        onChange={(event) => {
+                          const value = event.target.value || null;
+                          setColumnMapping((current) => ({ ...current, [field]: value }));
+                          setHasAnalyzed(false);
+                          setAnalysisResult(null);
+                        }}
+                        style={inputStyle}
+                      >
+                        <option value="">— não usar —</option>
+                        {headers.map((h) => (
+                          <option key={h} value={h}>{h}</option>
+                        ))}
+                      </select>
+                      <span style={{ fontSize: 12, color: selected ? '#15803d' : '#94a3b8', minWidth: 90 }}>
+                        {selected
+                          ? score >= 0.999
+                            ? 'exato'
+                            : `${Math.round(score * 100)}%`
+                          : '—'}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </section>
+          )}
+
+          {selectedFile && (
+            <section style={sectionStyle}>
+              <h2 style={{ marginTop: 0 }}>Regras de Importação (opcional)</h2>
+              <p style={{ margin: '0 0 14px', color: '#475569', fontSize: 14 }}>
+                Defina quais linhas NÃO devem ser importadas (ex: coluna <code>codigo</code> igual a
+                <code> EXCLUIDO</code>, ou código vazio). As regras valem só para esta importação.
+              </p>
+
+              {rowFilters.length > 0 && (
+                <div style={{ display: 'grid', gap: 8, marginBottom: 14 }}>
+                  {rowFilters.map((rule, index) => (
+                    <div
+                      key={`${rule.column}-${rule.condition}-${index}`}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        gap: 10,
+                        padding: '8px 12px',
+                        border: '1px solid #e2e8f0',
+                        borderRadius: 6,
+                        backgroundColor: '#f8fafc',
+                        fontSize: 14,
+                      }}
+                    >
+                      <span>
+                        Não importar se <strong>{rule.column}</strong> {CONDITION_LABELS[rule.condition]}
+                        {conditionNeedsValue(rule.condition) ? ` "${rule.value ?? ''}"` : ''}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removeRowFilter(index)}
+                        disabled={isAnalyzing || isExecuting || hasExecuted}
+                        style={{
+                          border: '1px solid #fecaca',
+                          color: '#b91c1c',
+                          backgroundColor: '#fff',
+                          borderRadius: 6,
+                          padding: '4px 10px',
+                          cursor: 'pointer',
+                          fontSize: 13,
+                        }}
+                      >
+                        Remover
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div
+                style={{
+                  display: 'grid',
+                  gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr) auto',
+                  gap: 10,
+                  alignItems: 'end',
+                }}
+              >
+                <label>
+                  <span style={labelStyle}>Coluna</span>
+                  {headers.length > 0 ? (
+                    <select
+                      value={newFilter.column}
+                      disabled={isAnalyzing || isExecuting || hasExecuted}
+                      onChange={(event) => setNewFilter((c) => ({ ...c, column: event.target.value }))}
+                      style={inputStyle}
+                    >
+                      <option value="">— escolher —</option>
+                      {headers.map((h) => (
+                        <option key={h} value={h}>{h}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={newFilter.column}
+                      placeholder="nome da coluna"
+                      disabled={isAnalyzing || isExecuting || hasExecuted}
+                      onChange={(event) => setNewFilter((c) => ({ ...c, column: event.target.value }))}
+                      style={inputStyle}
+                    />
+                  )}
+                </label>
+                <label>
+                  <span style={labelStyle}>Condição</span>
+                  <select
+                    value={newFilter.condition}
+                    disabled={isAnalyzing || isExecuting || hasExecuted}
+                    onChange={(event) =>
+                      setNewFilter((c) => ({ ...c, condition: event.target.value as RowFilterCondition }))
+                    }
+                    style={inputStyle}
+                  >
+                    {(Object.keys(CONDITION_LABELS) as RowFilterCondition[]).map((cond) => (
+                      <option key={cond} value={cond}>{CONDITION_LABELS[cond]}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  <span style={labelStyle}>Valor</span>
+                  <input
+                    type="text"
+                    value={newFilter.value}
+                    disabled={
+                      !conditionNeedsValue(newFilter.condition) || isAnalyzing || isExecuting || hasExecuted
+                    }
+                    placeholder={conditionNeedsValue(newFilter.condition) ? 'ex: EXCLUIDO' : '—'}
+                    onChange={(event) => setNewFilter((c) => ({ ...c, value: event.target.value }))}
+                    style={{
+                      ...inputStyle,
+                      opacity: conditionNeedsValue(newFilter.condition) ? 1 : 0.5,
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={addRowFilter}
+                  disabled={!newFilter.column.trim() || isAnalyzing || isExecuting || hasExecuted}
+                  style={{
+                    ...primaryButtonStyle,
+                    backgroundColor: '#0f766e',
+                    opacity: !newFilter.column.trim() ? 0.55 : 1,
+                    cursor: !newFilter.column.trim() ? 'not-allowed' : 'pointer',
+                  }}
+                >
+                  Adicionar regra
+                </button>
+              </div>
+            </section>
+          )}
 
           <section style={sectionStyle}>
             <h2 style={{ marginTop: 0 }}>3. Análise</h2>
@@ -520,8 +874,17 @@ export default function PartsImportPage() {
                   <Metric label="Skipped" value={summary.skipped} />
                   <Metric label="Conflicts" value={summary.conflicts} />
                   <Metric label="Invalid" value={summary.invalid} />
+                  <Metric label="Excluídas (regra)" value={analysisResult?.excluded ?? 0} />
                   <Metric label="Warnings" value={summary.warnings} />
                 </div>
+                {(analysisResult?.excluded ?? 0) > 0 && (
+                  <div style={{ marginTop: 12, color: '#475569', fontSize: 13 }}>
+                    {analysisResult?.excluded} linha(s) não importada(s) por regra de filtro
+                    {analysisResult?.excludedRows?.[0]
+                      ? ` (ex: linha ${analysisResult.excludedRows[0].row} — ${analysisResult.excludedRows[0].reason})`
+                      : ''}.
+                  </div>
+                )}
               </>
             )}
           </section>

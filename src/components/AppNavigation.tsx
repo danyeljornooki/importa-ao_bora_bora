@@ -8,6 +8,8 @@ const links = [
   { href: '/', label: 'Início' },
   { href: '/importacoes/pecas', label: 'Importação de Peças' },
   { href: '/importacoes/historico', label: 'Histórico' },
+  { href: '/diagnostico', label: 'Diagnóstico' },
+  { href: '/auditoria', label: 'Auditoria' },
   { href: '/revisao', label: 'Central de Revisão' },
   { href: '/marketplace', label: 'Marketplace' },
   { href: '/marketplace/ad-link', label: 'Vínculo de Anúncio' },

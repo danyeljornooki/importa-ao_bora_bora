@@ -9,6 +9,8 @@ import { normalizeImportError } from '../validators/errorNormalizer';
 import { logger } from '../utils/logger';
 import { getExistingPartsIdentifierStats } from '../core/importer/matching/inventoryStats';
 import { buildInventoryIndex } from '../core/importer/matching/buildInventoryIndex';
+import { evaluateRowFilters, type RowFilterRule } from '../modules/importer/rowFilters';
+import { applyColumnMapping, type ColumnMapping } from '../modules/importer/suggestFieldMapping';
 
 import type { PartCanonical } from '../modules/importer/schemas/part.schema';
 import type { ImportPlan } from '../modules/importer/planner/buildImportPlan';
@@ -26,6 +28,15 @@ export interface RunImportOptions {
   integrationId?: string | number | null;
   sheetTitle?: string;
   debugMatching?: boolean;
+  /** Regras configuraveis pelo usuario: linhas que casam NAO sao importadas. */
+  rowFilters?: RowFilterRule[];
+  /** Mapeamento confirmado de coluna -> campo (sobrescreve a auto-deteccao por alias). */
+  columnMapping?: ColumnMapping;
+}
+
+export interface ExcludedRow {
+  row: number;
+  reason: string;
 }
 
 export interface FailedMatch {
@@ -139,6 +150,9 @@ export interface RunImportResult {
     totalChanges: number;
     changes: PartChange[];
   }>;
+  /** Linhas removidas por regra de filtro do usuario (nao entram no pipeline). */
+  excluded: number;
+  excludedRows: ExcludedRow[];
   // Mantendo para compatibilidade
   totalRows: number;
   previewItems: any[];
@@ -265,28 +279,34 @@ export const runImport = async (
 
   const parsed: ParsedExcel = await parseExcel(file as any);
 
-  const rows: RowState[] = parsed.rows.map((row, index) => {
+  const rowFilters = options.rowFilters ?? [];
+  const columnMapping = options.columnMapping;
+  const excludedRows: ExcludedRow[] = [];
+
+  const rows: RowState[] = [];
+  parsed.rows.forEach((row, index) => {
     const rowNumber = index + 1;
+    const rawRow = row as Record<string, unknown>;
+
+    // Regras de exclusao do usuario: rodam sobre a linha CRUA. Linha excluida
+    // sai do pipeline (nao vira create/update/invalid) e e reportada a parte.
+    const filter = evaluateRowFilters(rawRow, rowFilters);
+    if (filter.excluded) {
+      excludedRows.push({ row: rowNumber, reason: filter.reason ?? 'linha excluída por regra' });
+      return;
+    }
 
     try {
-      const normalized = normalizePart(row as any, parsed.sheetName);
+      const effectiveRow = applyColumnMapping(rawRow, columnMapping);
+      const normalized = normalizePart(effectiveRow as any, parsed.sheetName);
       const validation = validatePart(normalized);
 
-      return {
-        row: rowNumber,
-        raw: row as Record<string, unknown>,
-        normalized,
-        validation,
-      };
+      rows.push({ row: rowNumber, raw: rawRow, normalized, validation });
     } catch (err) {
       const normalizedErr = normalizeImportError(err);
       logger.error('row=', rowNumber, 'error=', normalizedErr);
 
-      return {
-        row: rowNumber,
-        raw: row as Record<string, unknown>,
-        error: normalizedErr.message,
-      };
+      rows.push({ row: rowNumber, raw: rawRow, error: normalizedErr.message });
     }
   });
 
@@ -621,7 +641,8 @@ export const runImport = async (
 
   const totalRows = parsed.rows.length;
   const valid = previewItems.filter((p) => p.valid).length;
-  const invalid = totalRows - valid;
+  // invalid contado dos previewItems (linhas excluidas por regra NAO contam como invalid).
+  const invalid = previewItems.filter((p) => !p.valid).length;
   const warnings = previewItems.reduce((acc, p) => acc + (Array.isArray(p.warnings) ? p.warnings.length : 0), 0);
   const creates = importPlan.summary.creates;
   const updates = importPlan.summary.updates;
@@ -655,6 +676,8 @@ export const runImport = async (
         totalChanges: item.totalChanges,
         changes: item.changes,
       })),
+    excluded: excludedRows.length,
+    excludedRows,
     // Mantendo para compatibilidade
     totalRows,
     previewItems: previewItems.slice(0, 20).map((p) => ({ ...p })),
