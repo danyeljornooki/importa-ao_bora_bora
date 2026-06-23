@@ -1,5 +1,7 @@
 import * as XLSX from 'xlsx';
 
+// Legacy parser kept only for the current Import Engine flow.
+// New modules should use src/core/files/parseSpreadsheetFile.ts instead.
 export interface ParsedExcel {
   sheetName: string;
   availableSheets: string[];
@@ -52,7 +54,6 @@ const fixMojibake = (text: string): string => {
 const decodeCsvBuffer = async (file: File): Promise<string> => {
   const buffer = await file.arrayBuffer();
   const utf8Text = normalizeCsvText(new TextDecoder('utf-8').decode(buffer));
-  // quick attempt: try to fix common mojibake sequences first
   const maybeFixed = fixMojibake(utf8Text);
   if (!hasBrokenEncoding(maybeFixed)) {
     return maybeFixed;
@@ -115,5 +116,3 @@ export const parseExcel = async (file: File): Promise<ParsedExcel> => {
     throw new Error('Falha ao ler arquivo Excel: ' + (error instanceof Error ? error.message : String(error)));
   }
 };
-
-// if (!fileBuffer || !(fileBuffer instanceof ArrayBuffer)) {

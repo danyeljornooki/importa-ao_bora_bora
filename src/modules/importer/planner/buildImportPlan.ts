@@ -122,11 +122,11 @@ export const buildImportPlan = (previewItems: PreviewItem[]): ImportPlan => {
       continue;
     }
 
-  if (item.action === 'skip') {
+    if (item.action === 'skip') {
       actions.push({
         row: item.row,
         type: 'skip',
-        reason: item.matchedBy ? 'sem alteraÃ§Ãµes' : 'linha ignorada',
+        reason: item.matchedBy ? 'sem alterações' : 'linha ignorada',
         data: item.data,
         matchedBy: item.matchedBy,
         confidence: item.confidence,

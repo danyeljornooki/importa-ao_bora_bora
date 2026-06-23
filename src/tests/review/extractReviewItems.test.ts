@@ -68,6 +68,22 @@ describe('extractReviewItems', () => {
     })])).toContain('possible_duplicate');
   });
 
+  it('mantem prioridade de erro para linha invalida', () => {
+    const result = extractReviewItems({
+      run,
+      items: [item({
+        action: 'invalid',
+        reason: 'price obrigatório',
+      })],
+    });
+
+    expect(result.items[0]).toMatchObject({
+      type: 'invalid_row',
+      severity: 'error',
+      title: 'Linha inválida',
+    });
+  });
+
   it('converte AdLink HTTP 403 em ad_no_access', () => {
     expect(extractedTypes([item({
       payload: {
