@@ -7,6 +7,7 @@ export type ReviewItemType =
   | 'ad_not_found'
   | 'ad_conflict'
   | 'no_image'
+  | 'location_pending'
   | 'invalid_row'
   | 'failed_row'
   | 'warning';

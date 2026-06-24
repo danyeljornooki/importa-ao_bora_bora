@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { AppNavigation } from '../../components/AppNavigation';
-import { parseExcel } from '../../core/importer/parse/parseExcel';
+import { parseImportFile } from '../../modules/importer/parseImportFile';
 import {
   crossColumnLookup,
   findDuplicateRows,
@@ -62,7 +62,7 @@ interface LoadedSheet {
 }
 
 const loadSheet = async (file: File): Promise<LoadedSheet> => {
-  const parsed = await parseExcel(file as any);
+  const parsed = await parseImportFile(file, { fileName: file.name });
   const headerSet = new Set<string>();
   parsed.rows.forEach((row) =>
     Object.keys(row as Record<string, unknown>).forEach((k) => headerSet.add(k))

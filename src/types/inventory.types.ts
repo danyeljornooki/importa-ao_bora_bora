@@ -15,6 +15,7 @@ export interface ExistingInventoryItem {
   location?: string | null;
   storage_location_id?: string | null;
   storage_location_name?: string | null;
+  storage_location_source?: 'linked' | string | null;
   sku?: string | null;
   mercado_libre_brasil_category_id?: string | null;
   part_category_id?: string | null;
@@ -49,6 +50,7 @@ export interface InventoryPersistencePayload {
 
   storage_location_id?: string | null;
   storage_location_name?: string | null;
+  storage_location_source?: 'linked' | string | null;
 
   integrations?: Record<string, {
     id: string;

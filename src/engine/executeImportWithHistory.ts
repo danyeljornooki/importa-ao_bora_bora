@@ -3,12 +3,14 @@ import { runImport, type RunImportResult } from './runImport';
 import type { PersistExecutionResult } from '../modules/importer/persistence/persistExecutionPlan';
 import type { ImportHistoryAdapter } from '../types/importHistory.types';
 import type { InventoryPersistenceAdapter } from '../types/inventory.types';
+import type { StorageLocationAdapter } from '../core/locations/storageLocationAdapter';
 
 export interface ExecuteImportWithHistoryInput {
   file: File;
   storeId: string;
   inventoryAdapter: InventoryPersistenceAdapter;
   historyAdapter: ImportHistoryAdapter;
+  storageLocationAdapter?: StorageLocationAdapter | null;
   adapterName?: string;
   engineVersion?: string;
   debugMatching?: boolean;
@@ -51,7 +53,9 @@ export const executeImportWithHistory = async (
     const importResult = await runImport(fileBuffer, {
       storeId: input.storeId,
       adapter: input.inventoryAdapter,
+      fileName: input.file.name,
       debugMatching: input.debugMatching,
+      storageLocationAdapter: input.storageLocationAdapter ?? null,
     });
 
     const persistResult = await persistExecutionPlan(

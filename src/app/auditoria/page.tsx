@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import { AppNavigation } from '../../components/AppNavigation';
-import { parseExcel } from '../../core/importer/parse/parseExcel';
+import { parseImportFile } from '../../modules/importer/parseImportFile';
 import type { ValueTransform } from '../../modules/importer/diagnostics';
 import {
   compareTables,
@@ -34,7 +34,7 @@ const TRANSFORMS: { value: ValueTransform; label: string }[] = [
 interface LoadedSheet { name: string; headers: string[]; rows: Record<string, unknown>[]; }
 
 const loadSheet = async (file: File): Promise<LoadedSheet> => {
-  const parsed = await parseExcel(file as any);
+  const parsed = await parseImportFile(file, { fileName: file.name });
   const headerSet = new Set<string>();
   parsed.rows.forEach((row) => Object.keys(row as Record<string, unknown>).forEach((k) => headerSet.add(k)));
   return { name: file.name, headers: Array.from(headerSet), rows: parsed.rows as Record<string, unknown>[] };
