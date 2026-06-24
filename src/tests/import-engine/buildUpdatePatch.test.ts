@@ -40,10 +40,29 @@ describe('buildUpdatePatch', () => {
     expect(patch('description')).toEqual({ description: 'Nova descricao' });
   });
 
-  it('localizacao envia nome e id quando aplicavel', () => {
+  it('localizacao sem resolver envia somente nome', () => {
     expect(patch('location')).toEqual({
       storage_location_name: 'A 1',
-      storage_location_id: 'A 1',
+    });
+  });
+
+  it('localizacao resolvida envia id, nome e origem linked', () => {
+    const result = buildUpdatePatch({
+      incomingPart: incoming(),
+      existingPart: existing,
+      changes: [{ field: 'location', oldValue: 'A 0', newValue: 'A 1' }],
+      context: { storeId: 'store-1' },
+      resolvedLocation: {
+        _id: 'loc-1',
+        name: 'A 1',
+        location_path_text: 'SETOR A > A 1',
+      },
+    });
+
+    expect(result).toEqual({
+      storage_location_name: 'SETOR A > A 1',
+      storage_location_id: 'loc-1',
+      storage_location_source: 'linked',
     });
   });
 

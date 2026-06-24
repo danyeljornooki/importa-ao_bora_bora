@@ -1,10 +1,10 @@
-import { parseExcel } from '../core/importer/parse/parseExcel';
+import { parseImportFile } from '../modules/importer/parseImportFile';
 import { normalizePart } from '../core/importer/normalize/normalizePart';
 import { validatePart, type ValidationResult } from '../core/importer/validate/validatePart';
 import { matchPart } from '../core/importer/matching/matchPart';
 import { comparePart } from '../core/importer/compare/comparePart';
 import { buildImportPlan } from '../core/importer/planner/buildImportPlan';
-import buildExecutionPlan from '../core/importer/execution/buildExecutionPlan';
+import { buildExecutionPlanWithLocations } from '../core/importer/execution/buildExecutionPlan';
 import { normalizeImportError } from '../validators/errorNormalizer';
 import { logger } from '../utils/logger';
 import { getExistingPartsIdentifierStats } from '../core/importer/matching/inventoryStats';
@@ -15,23 +15,26 @@ import { applyColumnMapping, type ColumnMapping } from '../modules/importer/sugg
 import type { PartCanonical } from '../modules/importer/schemas/part.schema';
 import type { ImportPlan } from '../modules/importer/planner/buildImportPlan';
 import type { ExecutionPlan } from '../planners/buildExecutionPlan';
-import type { ParsedExcel } from '../modules/importer/parseExcel';
+import type { ParsedImportFile } from '../modules/importer/parseImportFile';
 import type { PartChange } from '../modules/importer/comparators/comparePart';
 import type {
   ExistingInventoryItem,
   InventoryPersistenceAdapter,
 } from '../types/inventory.types';
+import type { StorageLocationAdapter } from '../core/locations/storageLocationAdapter';
 
 export interface RunImportOptions {
   storeId: string | number;
   adapter: InventoryPersistenceAdapter;
   integrationId?: string | number | null;
+  fileName?: string;
   sheetTitle?: string;
   debugMatching?: boolean;
   /** Regras configuraveis pelo usuario: linhas que casam NAO sao importadas. */
   rowFilters?: RowFilterRule[];
   /** Mapeamento confirmado de coluna -> campo (sobrescreve a auto-deteccao por alias). */
   columnMapping?: ColumnMapping;
+  storageLocationAdapter?: StorageLocationAdapter | null;
 }
 
 export interface ExcludedRow {
@@ -274,10 +277,9 @@ export const runImport = async (
   const debugMatching = options.debugMatching === true;
   const storeId = String(options.storeId);
 
-  const fileName = options.sheetTitle ? `${options.sheetTitle}.xlsx` : 'import.xlsx';
-  const file = new File([fileBuffer], fileName);
-
-  const parsed: ParsedExcel = await parseExcel(file as any);
+  const fileName =
+    options.fileName ?? (options.sheetTitle ? `${options.sheetTitle}.xlsx` : 'import.xlsx');
+  const parsed: ParsedImportFile = await parseImportFile(fileBuffer, { fileName });
 
   const rowFilters = options.rowFilters ?? [];
   const columnMapping = options.columnMapping;
@@ -634,9 +636,10 @@ export const runImport = async (
   }
 
   const importPlan = buildImportPlan(previewItems as any);
-  const executionPlan = buildExecutionPlan(previewItems as any, {
+  const executionPlan = await buildExecutionPlanWithLocations(previewItems as any, {
     storeId,
     integrationId: options.integrationId,
+    storageLocationAdapter: options.storageLocationAdapter ?? null,
   });
 
   const totalRows = parsed.rows.length;

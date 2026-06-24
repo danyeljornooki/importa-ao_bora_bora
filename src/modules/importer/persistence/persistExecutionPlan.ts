@@ -46,6 +46,7 @@ const buildHistoryItem = (action: ExecutionAction): SaveImportRunItemInput => ({
   targetId: action.targetId ?? null,
   reason: action.reason,
   payload: action.payload,
+  warnings: action.warnings ?? [],
   executionStatus: isExecutable(action) ? 'pending' : 'skipped',
   executionError: null,
 });

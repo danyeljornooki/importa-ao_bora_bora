@@ -209,7 +209,7 @@ const buildHistoryItems = (
         partsByRow.get(action.row),
         result
       ),
-      warnings: [...result.warnings],
+      warnings: [...new Set([...(action.warnings ?? []), ...result.warnings])],
       errors: result.partResult.error ? [result.partResult.error] : [],
       executionStatus:
         result.partResult.action === 'failed'
@@ -407,7 +407,7 @@ export const executePartImportWithComplements = async (
         pecaId: action.targetId ?? null,
         error: 'resultado de persistência ausente',
       };
-      const warnings: string[] = [];
+      const warnings: string[] = [...(action.warnings ?? [])];
       const part = partsByRow.get(action.row);
 
       if (
