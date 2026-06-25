@@ -10,6 +10,7 @@ import {
 } from '../../../adapters/mercado-livre/mercadoLivreAuthAdapter';
 import { supabaseImportHistoryAdapter } from '../../../adapters/supabase/supabaseImportHistoryAdapter';
 import { supabaseInventoryAdapter } from '../../../adapters/supabase/supabaseInventoryAdapter';
+import { supabaseStorageLocationAdapter } from '../../../adapters/supabase/supabaseStorageLocationAdapter';
 import { mercadoLivreAdapter } from '../../../adapters/mercado-livre/mercadoLivreAdapter';
 import { supabaseMarketplaceAdAdapter } from '../../../adapters/supabase/supabaseMarketplaceAdAdapter';
 import {
@@ -24,7 +25,7 @@ import {
 import type { ImportActionType } from '../../../modules/importer/planner/buildImportPlan';
 import type { PartCanonical } from '../../../modules/importer/schemas/part.schema';
 import type { ImportExecutionContext } from '../../../types/integration.types';
-import { parseExcel } from '../../../core/importer/parse/parseExcel';
+import { parseImportFile } from '../../../modules/importer/parseImportFile';
 import {
   suggestFieldMapping,
   type ColumnMapping,
@@ -254,7 +255,7 @@ export default function PartsImportPage() {
     setAiMessage(null);
     if (!file) return;
     try {
-      const parsed = await parseExcel(file as any);
+      const parsed = await parseImportFile(file, { fileName: file.name });
       const headerSet = new Set<string>();
       parsed.rows.forEach((row) =>
         Object.keys(row as Record<string, unknown>).forEach((k) => headerSet.add(k))
@@ -385,9 +386,11 @@ export default function PartsImportPage() {
         storeId: executionContext.storeId,
         adapter: supabaseInventoryAdapter,
         integrationId: executionContext.integrationId,
+        fileName: selectedFile.name,
         debugMatching: debugMode,
         rowFilters,
         columnMapping,
+        storageLocationAdapter: supabaseStorageLocationAdapter,
       });
 
       setAnalysisResult(result);
@@ -416,6 +419,7 @@ export default function PartsImportPage() {
         analysisResult,
         executionContext,
         inventoryAdapter: supabaseInventoryAdapter,
+        storageLocationAdapter: supabaseStorageLocationAdapter,
         historyAdapter: supabaseImportHistoryAdapter,
         adRegistryAdapter: supabaseMarketplaceAdAdapter,
         marketplaceAdapter: mercadoLivreAdapter,

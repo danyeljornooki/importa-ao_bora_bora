@@ -1,6 +1,5 @@
 import type { PartChange } from '../modules/importer/comparators/comparePart';
 import type { PartCanonical } from '../modules/importer/schemas/part.schema';
-import { resolveLocation } from '../services/resolveLocation';
 import type {
   ExistingInventoryItem,
   InventoryPersistencePatch,
@@ -13,6 +12,13 @@ export interface BuildUpdatePatchInput {
   context: {
     storeId: string;
   };
+  resolvedLocation?: {
+    id?: string;
+    _id?: string;
+    name?: string;
+    location_path_text?: string | null;
+    path_text?: string | null;
+  } | null;
 }
 
 const normalizeName = (value: string): string =>
@@ -42,6 +48,7 @@ export const buildUpdatePatch = ({
   existingPart,
   changes,
   context,
+  resolvedLocation,
 }: BuildUpdatePatchInput): InventoryPersistencePatch => {
   if (!context.storeId || context.storeId.trim() === '') {
     throw new Error('storeId obrigatorio para buildUpdatePatch');
@@ -71,12 +78,16 @@ export const buildUpdatePatch = ({
   }
 
   if (changedFields.has('location') && incomingPart.location?.trim()) {
-    const resolvedLocation = resolveLocation(incomingPart.location);
     patch.storage_location_name =
-      resolvedLocation?.descricao ?? incomingPart.location.trim();
+      resolvedLocationName(resolvedLocation) ?? incomingPart.location.trim();
 
-    if (resolvedLocation?._id) {
-      patch.storage_location_id = resolvedLocation._id;
+    const resolvedId = resolvedLocation?.id ?? resolvedLocation?._id;
+    if (resolvedId) {
+      patch.storage_location_id = resolvedId;
+      patch.storage_location_source = 'linked';
+    } else {
+      patch.storage_location_id = null;
+      patch.storage_location_source = 'pending';
     }
   }
 
@@ -117,5 +128,13 @@ export const buildUpdatePatch = ({
 
   return patch;
 };
+
+const resolvedLocationName = (
+  location: BuildUpdatePatchInput['resolvedLocation']
+): string | null =>
+  location?.location_path_text ??
+  location?.path_text ??
+  location?.name ??
+  null;
 
 export default buildUpdatePatch;

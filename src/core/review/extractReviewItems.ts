@@ -87,6 +87,8 @@ const warningAlreadyRepresented = (
   warning: string,
   representedTypes: Set<ReviewItemType>
 ): boolean =>
+  representedTypes.has('location_pending') &&
+    includesAny(warning, ['location_pending', 'localizacao pendente', 'localização pendente']) ||
   representedTypes.has('possible_duplicate') &&
     includesAny(warning, ['duplicad', 'conflito']) ||
   representedTypes.has('no_image') &&
@@ -219,6 +221,19 @@ export const extractReviewItems = (input: {
       ? item.warnings.map(asText).filter(importantWarning)
       : [];
     warnings.forEach((warning, index) => {
+      if (includesAny(warning, ['location_pending', 'localizacao pendente', 'localização pendente'])) {
+        reviewItems.push(createReviewItem(
+          item,
+          'location_pending',
+          'warning',
+          'Localização pendente',
+          'Verificar cadastro da localização e vincular manualmente se necessário.',
+          'location_pending'
+        ));
+        representedTypes.add('location_pending');
+        return;
+      }
+
       if (warningAlreadyRepresented(warning, representedTypes)) return;
       reviewItems.push(createReviewItem(
         item,

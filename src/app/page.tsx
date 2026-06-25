@@ -2,6 +2,8 @@
 
 import { AppNavigation } from '../components/AppNavigation';
 
+const showDevLinks = process.env.NEXT_PUBLIC_SHOW_DEV_LINKS === 'true';
+
 export default function Home() {
   return (
     <div style={{ padding: '2rem' }}>
@@ -20,10 +22,12 @@ export default function Home() {
         Explore anúncios do Mercado Livre em{' '}
         <a href="/marketplace">Marketplace Explorer</a>
       </p>
-      <p>
-        A tela técnica continua disponível em{' '}
-        <a href="/test-import">/test-import</a>
-      </p>
+      {showDevLinks && (
+        <p>
+          A tela técnica continua disponível em{' '}
+          <a href="/test-import">/test-import</a>
+        </p>
+      )}
     </div>
   )
 }

@@ -4,28 +4,35 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import React from 'react';
 
-const links = [
+const mainLinks = [
   { href: '/', label: 'Início' },
   { href: '/importacoes/pecas', label: 'Importação de Peças' },
   { href: '/importacoes/historico', label: 'Histórico' },
   { href: '/diagnostico', label: 'Diagnóstico' },
   { href: '/auditoria', label: 'Auditoria' },
   { href: '/revisao', label: 'Central de Revisão' },
+  { href: '/catalogo-preview', label: 'Catálogo Preview' },
   { href: '/marketplace', label: 'Marketplace' },
   { href: '/marketplace/ad-link', label: 'Vínculo de Anúncio' },
+];
+
+const devLinks = [
   { href: '/test-import', label: 'Teste técnico' },
   { href: '/test-import/tests', label: 'Testes' },
 ];
+
+const showDevLinks = process.env.NEXT_PUBLIC_SHOW_DEV_LINKS === 'true';
 
 const isActive = (pathname: string, href: string): boolean =>
   href === '/'
     ? pathname === href
     : href === '/marketplace'
       ? pathname === href
-    : pathname === href || pathname.startsWith(`${href}/`);
+      : pathname === href || pathname.startsWith(`${href}/`);
 
 export function AppNavigation() {
   const pathname = usePathname();
+  const links = showDevLinks ? [...mainLinks, ...devLinks] : mainLinks;
 
   return (
     <nav

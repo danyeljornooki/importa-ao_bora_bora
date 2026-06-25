@@ -27,6 +27,7 @@ const typeLabels: Record<ReviewItemType, string> = {
   ad_not_found: 'Anúncio não encontrado',
   ad_conflict: 'Conflito de anúncio',
   no_image: 'Sem imagem',
+  location_pending: 'Localização pendente',
   invalid_row: 'Linha inválida',
   failed_row: 'Falha',
   warning: 'Warning',
@@ -269,6 +270,11 @@ export default function ReviewRunPage() {
       label: 'Sem imagem',
       value: summary.byType.no_image ?? 0,
       filter: 'no_image',
+    },
+    {
+      label: 'Localização pendente',
+      value: summary.byType.location_pending ?? 0,
+      filter: 'location_pending',
     },
     {
       label: 'Falhas',

@@ -22,6 +22,7 @@ export interface SupabaseInventoryPayload {
   mercado_libre_brasil_category_id?: string | null;
   storage_location_id?: string | null;
   storage_location_name?: string | null;
+  storage_location_source?: string | null;
   description?: string | null;
   catalog_attributes?: unknown[] | null;
   image_count?: number | null;
@@ -54,6 +55,7 @@ const allowedFields: Array<keyof SupabaseInventoryPayload> = [
   'mercado_libre_brasil_category_id',
   'storage_location_id',
   'storage_location_name',
+  'storage_location_source',
   'description',
   'catalog_attributes',
   'image_count',

@@ -16,6 +16,7 @@ import {
 import { supabaseImportHistoryAdapter } from '../../adapters/supabase/supabaseImportHistoryAdapter';
 import { supabaseInventoryAdapter } from '../../adapters/supabase/supabaseInventoryAdapter';
 import { mongoInventoryClientAdapter } from '../../adapters/mongo/mongoInventoryClientAdapter';
+import { supabaseStorageLocationAdapter } from '../../adapters/supabase/supabaseStorageLocationAdapter';
 
 interface PreviewItem {
   row: number;
@@ -252,7 +253,9 @@ export default function TestImportPage() {
       const result = await runImport(fileBuffer, {
         storeId: storeId.trim(),
         adapter: inventorySource === 'mongo' ? mongoInventoryClientAdapter : supabaseInventoryAdapter,
+        fileName: selectedFile.name,
         debugMatching: true,
+        storageLocationAdapter: supabaseStorageLocationAdapter,
       });
 
       setAnalysisResult(result);
@@ -485,6 +488,7 @@ export default function TestImportPage() {
                   storeId: storeId.trim(),
                   inventoryAdapter: supabaseInventoryAdapter,
                   historyAdapter: supabaseImportHistoryAdapter,
+                  storageLocationAdapter: supabaseStorageLocationAdapter,
                   adapterName: 'supabase',
                   engineVersion: '1.0.0',
                   debugMatching: true,

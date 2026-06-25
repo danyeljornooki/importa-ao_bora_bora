@@ -1,5 +1,4 @@
 import type { PartCanonical } from '../modules/importer/schemas/part.schema';
-import { resolveLocation } from '../services/resolveLocation';
 import type { InventoryPersistencePayload } from '../types/inventory.types';
 
 export interface MongoIntegration {
@@ -24,7 +23,7 @@ type Options = {
       user_id?: string;
     };
   } | null;
-  resolvedLocation?: { _id?: string; descricao?: string } | null;
+  resolvedLocation?: { id?: string; _id?: string; name?: string; location_path_text?: string | null; path_text?: string | null } | null;
 };
 
 const normalizeName = (value?: string | null): string | null => {
@@ -122,13 +121,19 @@ export const buildPersistencePayload = (
   payload.price = price;
   payload.marketplace_price = price;
 
-  // Location: prefer provided resolvedLocation, else try resolver service, else fallback to original
-  const resolved = options.resolvedLocation ?? resolveLocation(importedPart.location ?? null);
-  if (resolved && resolved._id) {
-    payload.storage_location_id = resolved._id;
-    payload.storage_location_name = resolved.descricao ?? importedPart.location ?? null;
+  // Location: only a real resolver may provide storage_location_id.
+  const resolved = options.resolvedLocation ?? null;
+  const resolvedId = resolved?.id ?? resolved?._id;
+  if (resolved && resolvedId) {
+    payload.storage_location_id = resolvedId;
+    payload.storage_location_name =
+      resolved.location_path_text ?? resolved.path_text ?? resolved.name ?? importedPart.location ?? null;
+    payload.storage_location_source = 'linked';
   } else {
     payload.storage_location_name = importedPart.location ?? null;
+    if (importedPart.location?.trim()) {
+      payload.storage_location_source = 'pending';
+    }
   }
 
   // Integrations
