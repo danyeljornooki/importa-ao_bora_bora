@@ -408,6 +408,7 @@ export default function PartsImportPage() {
         analysisResult,
         executionContext,
         inventoryAdapter: supabaseInventoryAdapter,
+        storageLocationAdapter: supabaseStorageLocationAdapter,
         historyAdapter: supabaseImportHistoryAdapter,
         adRegistryAdapter: supabaseMarketplaceAdAdapter,
         marketplaceAdapter: mercadoLivreAdapter,

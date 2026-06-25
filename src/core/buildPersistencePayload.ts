@@ -23,7 +23,7 @@ type Options = {
       user_id?: string;
     };
   } | null;
-  resolvedLocation?: { _id?: string; name?: string; location_path_text?: string | null; path_text?: string | null } | null;
+  resolvedLocation?: { id?: string; _id?: string; name?: string; location_path_text?: string | null; path_text?: string | null } | null;
 };
 
 const normalizeName = (value?: string | null): string | null => {
@@ -123,13 +123,17 @@ export const buildPersistencePayload = (
 
   // Location: only a real resolver may provide storage_location_id.
   const resolved = options.resolvedLocation ?? null;
-  if (resolved && resolved._id) {
-    payload.storage_location_id = resolved._id;
+  const resolvedId = resolved?.id ?? resolved?._id;
+  if (resolved && resolvedId) {
+    payload.storage_location_id = resolvedId;
     payload.storage_location_name =
       resolved.location_path_text ?? resolved.path_text ?? resolved.name ?? importedPart.location ?? null;
     payload.storage_location_source = 'linked';
   } else {
     payload.storage_location_name = importedPart.location ?? null;
+    if (importedPart.location?.trim()) {
+      payload.storage_location_source = 'pending';
+    }
   }
 
   // Integrations

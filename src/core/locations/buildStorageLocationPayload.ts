@@ -6,11 +6,10 @@ import {
 import type {
   LocationInput,
   StorageLocationPayload,
-  StorageLocationPathItem,
 } from './location.types';
 import { normalizeLocationInput } from './normalizeLocationInput';
 
-const inferTypeName = (name: string): string => {
+export const inferStorageLocationTypeName = (name: string): string => {
   const normalized = name
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
@@ -43,8 +42,7 @@ const buildNgrams = (value: string): string[] => {
 };
 
 export const buildStorageLocationPayload = (
-  input: LocationInput,
-  now: Date = new Date()
+  input: LocationInput
 ): StorageLocationPayload | null => {
   const normalized = normalizeLocationInput(input.rawLocation);
   if (!input.storeId?.trim() || normalized.parts.length === 0) return null;
@@ -54,15 +52,6 @@ export const buildStorageLocationPayload = (
   const location_path_text = buildLocationPathText(location_path_names);
   const leafName = location_path_names[location_path_names.length - 1];
   const leafSlug = location_path_slugs[location_path_slugs.length - 1] ?? '';
-  const pathItem: StorageLocationPathItem = {
-    storage_location_id: '',
-    name: leafName,
-    abbreviation: leafSlug ? leafSlug.toUpperCase() : null,
-    storage_location_type_id: null,
-    storage_location_type_name: inferTypeName(leafName),
-    icon_key: null,
-    color_key: null,
-  };
 
   return {
     store_id: input.storeId,
@@ -70,7 +59,6 @@ export const buildStorageLocationPayload = (
     description: '',
     status: 'active',
     created_by: input.createdBy?.trim() || input.storeId,
-    created_at: now.toISOString(),
     search_name_ngrams: buildNgrams(location_path_text),
     location_path_names,
     location_path_slugs,
@@ -79,10 +67,7 @@ export const buildStorageLocationPayload = (
     location_path_text,
     location_path_depth: location_path_names.length,
     location_path_character_count: location_path_text.length,
-    path: location_path_text,
-    path_ids: [],
     path_text: location_path_text,
-    path_items: [pathItem],
     level: Math.max(0, location_path_names.length - 1),
     abbreviation: leafSlug ? leafSlug.toUpperCase() : null,
     stock_capacity: 0,

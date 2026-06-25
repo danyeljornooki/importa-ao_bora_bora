@@ -3,6 +3,8 @@ import { buildImagePlan } from '../core/images/buildImagePlan';
 import { resolveAdLink } from '../core/marketplace/ad-link/resolveAdLink';
 import { executeAdLinkDecision } from '../core/marketplace/ad-registry/executeAdLinkDecision';
 import { persistExecutionPlan } from '../core/importer/execution/persistExecutionPlan';
+import { finalizeExecutionPlanLocations } from '../core/locations/finalizeExecutionPlanLocations';
+import type { StorageLocationAdapter } from '../core/locations/storageLocationAdapter';
 import type {
   PersistExecutionResult,
   PersistExecutionRowResult,
@@ -45,6 +47,7 @@ export interface ExecutePartImportWithComplementsInput {
   historyAdapter: ImportHistoryAdapter;
   adRegistryAdapter: MarketplaceAdRegistryAdapter;
   marketplaceAdapter: MarketplaceAdapter;
+  storageLocationAdapter?: StorageLocationAdapter | null;
   options?: ExecutePartImportWithComplementsOptions;
 }
 
@@ -381,8 +384,21 @@ export const executePartImportWithComplements = async (
     });
     runId = createdRun.id;
 
+    const partsByRow = new Map(
+      input.analysisResult.importPlan.actions.flatMap((action) =>
+        action.data ? [[action.row, action.data] as const] : []
+      )
+    );
+    const executionPlan = await finalizeExecutionPlanLocations(
+      input.analysisResult.executionPlan,
+      partsByRow,
+      {
+        storeId: input.executionContext.storeId,
+        storageLocationAdapter: input.storageLocationAdapter ?? null,
+      }
+    );
     const persistResult = await persistExecutionPlan(
-      buildPartOnlyExecutionPlan(input.analysisResult.executionPlan),
+      buildPartOnlyExecutionPlan(executionPlan),
       input.inventoryAdapter,
       {
         onProgress: options.onProgress,
@@ -390,17 +406,12 @@ export const executePartImportWithComplements = async (
       }
     );
 
-    const partsByRow = new Map(
-      input.analysisResult.importPlan.actions.flatMap((action) =>
-        action.data ? [[action.row, action.data] as const] : []
-      )
-    );
     const persistedByRow = new Map(
       persistResult.rows.map((row) => [row.row, row])
     );
     const rows: PartImportRowExecutionResult[] = [];
 
-    for (const action of input.analysisResult.executionPlan.actions) {
+    for (const action of executionPlan.actions) {
       const persisted = persistedByRow.get(action.row) ?? {
         row: action.row,
         action: 'failed' as const,
@@ -462,7 +473,7 @@ export const executePartImportWithComplements = async (
     await input.historyAdapter.saveRunItems(
       runId,
       buildHistoryItems(
-        input.analysisResult.executionPlan.actions,
+        executionPlan.actions,
         partsByRow,
         rows
       )

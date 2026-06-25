@@ -123,6 +123,7 @@ describe('resolveStorageLocation', () => {
     });
     expect(plan.actions[0].payload).toMatchObject({
       storage_location_name: 'PRATELEIRA A',
+      storage_location_source: 'pending',
     });
     expect(plan.actions[0].payload).not.toHaveProperty('storage_location_id');
   });
