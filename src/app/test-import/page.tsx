@@ -15,6 +15,7 @@ import {
 } from '../../engine/executeImportWithHistory';
 import { supabaseImportHistoryAdapter } from '../../adapters/supabase/supabaseImportHistoryAdapter';
 import { supabaseInventoryAdapter } from '../../adapters/supabase/supabaseInventoryAdapter';
+import { mongoInventoryClientAdapter } from '../../adapters/mongo/mongoInventoryClientAdapter';
 
 interface PreviewItem {
   row: number;
@@ -166,6 +167,7 @@ export default function TestImportPage() {
   const [conflictDetails, setConflictDetails] = useState<ConflictDetail[]>([]);
   const [debugMode, setDebugMode] = useState<boolean>(false);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [inventorySource, setInventorySource] = useState<'supabase' | 'mongo'>('supabase');
 
   const applyImportResult = (result: RunImportResult) => {
     setSheetName(result.sheetName);
@@ -249,7 +251,7 @@ export default function TestImportPage() {
       const fileBuffer = await selectedFile.arrayBuffer();
       const result = await runImport(fileBuffer, {
         storeId: storeId.trim(),
-        adapter: supabaseInventoryAdapter,
+        adapter: inventorySource === 'mongo' ? mongoInventoryClientAdapter : supabaseInventoryAdapter,
         debugMatching: true,
       });
 
@@ -305,6 +307,22 @@ export default function TestImportPage() {
           />
         </label>
 
+        <label style={{ display: 'block', marginBottom: 12 }}>
+          Fonte do inventário (comparação)
+          <select
+            value={inventorySource}
+            disabled={isAnalyzing || isExecuting}
+            onChange={(event) => {
+              setInventorySource(event.target.value as 'supabase' | 'mongo');
+              clearImportFlow();
+            }}
+            style={{ display: 'block', marginTop: 8, width: 320, maxWidth: '100%' }}
+          >
+            <option value="supabase">Supabase (teste)</option>
+            <option value="mongo">MongoDB (produção) — só leitura/análise por enquanto</option>
+          </select>
+        </label>
+
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginTop: 12 }}>
           <input
             type="checkbox"
@@ -321,7 +339,7 @@ export default function TestImportPage() {
 
       <div style={{ marginTop: 12, padding: 12, border: '1px solid #e6e6ff', borderRadius: 4, backgroundColor: '#f9f9ff' }}>
         <h3>Existing Dataset</h3>
-        <div>Source: Supabase</div>
+        <div>Source: <strong>{inventorySource === 'mongo' ? 'MongoDB (produção)' : 'Supabase (teste)'}</strong></div>
         <div>Count: {existingPartsCount}</div>
         {existingPartsCount < 100 && (
           <div style={{ color: '#ff6b00', marginTop: 8 }}>
@@ -442,9 +460,16 @@ export default function TestImportPage() {
             </div>
           )}
 
+          {inventorySource === 'mongo' && (
+            <div style={{ color: '#b45309', marginBottom: 10 }}>
+              Escrita no Mongo de produção ainda em construção. Análise (leitura) funciona;
+              a execução está disponível só com Supabase por enquanto.
+            </div>
+          )}
+
           <button
             type="button"
-            disabled={executionBlocked || isAnalyzing || isExecuting || hasExecuted}
+            disabled={executionBlocked || isAnalyzing || isExecuting || hasExecuted || inventorySource === 'mongo'}
             onClick={async () => {
               setPersistError(null);
               setExecutionResult(null);
