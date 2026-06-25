@@ -40,9 +40,11 @@ describe('buildUpdatePatch', () => {
     expect(patch('description')).toEqual({ description: 'Nova descricao' });
   });
 
-  it('localizacao sem resolver envia somente nome', () => {
+  it('localizacao sem resolver fica pendente', () => {
     expect(patch('location')).toEqual({
       storage_location_name: 'A 1',
+      storage_location_id: null,
+      storage_location_source: 'pending',
     });
   });
 

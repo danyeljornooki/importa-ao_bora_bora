@@ -9,10 +9,15 @@ export interface StorageLocationPathItem {
 }
 
 export interface StorageLocation {
-  _id: string;
+  id?: string;
+  _id?: string;
   store_id: string;
   name: string;
   abbreviation?: string | null;
+  storage_location_type_id?: string | null;
+  storage_location_type_name?: string | null;
+  icon_key?: string | null;
+  color_key?: string | null;
   path_text?: string | null;
   location_path_text?: string | null;
   location_path_key?: string | null;
@@ -49,7 +54,6 @@ export interface StorageLocationPayload {
   description: string;
   status: 'active';
   created_by: string;
-  created_at: string;
   search_name_ngrams: string[];
   location_path_names: string[];
   location_path_slugs: string[];
@@ -58,10 +62,7 @@ export interface StorageLocationPayload {
   location_path_text: string;
   location_path_depth: number;
   location_path_character_count: number;
-  path: string;
-  path_ids: string[];
   path_text: string;
-  path_items: StorageLocationPathItem[];
   level: number;
   abbreviation: string | null;
   stock_capacity: number;

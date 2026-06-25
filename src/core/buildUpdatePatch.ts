@@ -13,6 +13,7 @@ export interface BuildUpdatePatchInput {
     storeId: string;
   };
   resolvedLocation?: {
+    id?: string;
     _id?: string;
     name?: string;
     location_path_text?: string | null;
@@ -80,9 +81,13 @@ export const buildUpdatePatch = ({
     patch.storage_location_name =
       resolvedLocationName(resolvedLocation) ?? incomingPart.location.trim();
 
-    if (resolvedLocation?._id) {
-      patch.storage_location_id = resolvedLocation._id;
+    const resolvedId = resolvedLocation?.id ?? resolvedLocation?._id;
+    if (resolvedId) {
+      patch.storage_location_id = resolvedId;
       patch.storage_location_source = 'linked';
+    } else {
+      patch.storage_location_id = null;
+      patch.storage_location_source = 'pending';
     }
   }
 

@@ -8,8 +8,7 @@ describe('buildStorageLocationPayload', () => {
         storeId: 'store-1',
         rawLocation: 'SETOR B > CAIXA 246',
         createdBy: null,
-      },
-      new Date('2026-01-02T03:04:05.000Z')
+      }
     );
 
     expect(payload).toMatchObject({
@@ -18,7 +17,6 @@ describe('buildStorageLocationPayload', () => {
       description: '',
       status: 'active',
       created_by: 'store-1',
-      created_at: '2026-01-02T03:04:05.000Z',
       location_path_names: ['SETOR B', 'CAIXA 246'],
       location_path_slugs: ['setor-b', 'caixa-246'],
       location_path_key: 'setor-b/caixa-246',
@@ -32,10 +30,11 @@ describe('buildStorageLocationPayload', () => {
       part_category_ids: [],
       rule_overrides: [],
     });
-    expect(payload?.path_items?.[0]).toMatchObject({
-      name: 'CAIXA 246',
-      storage_location_type_name: 'CAIXA',
-    });
+    expect(payload).not.toHaveProperty('created_at');
+    expect(payload).not.toHaveProperty('updated_at');
+    expect(payload).not.toHaveProperty('path');
+    expect(payload).not.toHaveProperty('path_ids');
+    expect(payload).not.toHaveProperty('path_items');
   });
 
   it('retorna null sem storeId ou localizacao util', () => {
