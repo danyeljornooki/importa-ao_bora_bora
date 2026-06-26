@@ -38,6 +38,14 @@ import type {
   RowFilterRule,
   RowFilterCondition,
 } from '../../../modules/importer/rowFilters';
+import type { DescriptionStrategy } from '../../../modules/importer/resolveDescription';
+
+const DESCRIPTION_STRATEGIES: { value: DescriptionStrategy; label: string }[] = [
+  { value: 'sheet_then_ml', label: 'Da planilha; se não houver, a do anúncio ML' },
+  { value: 'sheet', label: 'Sempre a da planilha' },
+  { value: 'ml', label: 'Sempre a do anúncio ML' },
+  { value: 'ml_then_sheet', label: 'Do anúncio ML; se não houver, a da planilha' },
+];
 
 const FIELD_LABELS: Record<CanonicalField, string> = {
   code: 'Código',
@@ -225,6 +233,9 @@ export default function PartsImportPage() {
   const [sampleRows, setSampleRows] = useState<Record<string, unknown>[]>([]);
   const [isAiLoading, setIsAiLoading] = useState<boolean>(false);
   const [aiMessage, setAiMessage] = useState<string | null>(null);
+
+  // Estratégia de origem da descrição (aplicada no vínculo do anúncio ML)
+  const [descriptionStrategy, setDescriptionStrategy] = useState<DescriptionStrategy>('sheet_then_ml');
 
   // Regras de importação configuráveis pelo usuário
   const [rowFilters, setRowFilters] = useState<RowFilterRule[]>([]);
@@ -428,6 +439,8 @@ export default function PartsImportPage() {
             excludedCount: analysisResult.excluded,
             excludedRows: analysisResult.excludedRows,
             columnMapping,
+            descriptionStrategy,
+            semMlbCount: analysisResult.qualidade?.sem_mlb ?? 0,
           },
           onProgress: setExecutionProgress,
         },
@@ -841,6 +854,26 @@ export default function PartsImportPage() {
             </section>
           )}
 
+          {selectedFile && (
+            <section style={sectionStyle}>
+              <h2 style={{ marginTop: 0 }}>Descrição da Peça</h2>
+              <p style={{ margin: '0 0 14px', color: '#475569', fontSize: 14 }}>
+                De onde vem a descrição da peça. A parte do Mercado Livre é aplicada quando a peça
+                é vinculada ao anúncio (etapa de vínculo).
+              </p>
+              <select
+                value={descriptionStrategy}
+                disabled={isAnalyzing || isExecuting || hasExecuted}
+                onChange={(event) => setDescriptionStrategy(event.target.value as DescriptionStrategy)}
+                style={{ ...inputStyle, maxWidth: 480 }}
+              >
+                {DESCRIPTION_STRATEGIES.map((s) => (
+                  <option key={s.value} value={s.value}>{s.label}</option>
+                ))}
+              </select>
+            </section>
+          )}
+
           <section style={sectionStyle}>
             <h2 style={{ marginTop: 0 }}>3. Análise</h2>
             <button
@@ -892,6 +925,30 @@ export default function PartsImportPage() {
               </>
             )}
           </section>
+
+          {hasAnalyzed && (analysisResult?.qualidade?.sem_mlb ?? 0) > 0 && (
+            <section style={sectionStyle}>
+              <h2 style={{ marginTop: 0 }}>Peças sem MLB ({analysisResult?.qualidade.sem_mlb})</h2>
+              <p style={{ margin: '0 0 12px', color: '#475569', fontSize: 14 }}>
+                Estas peças serão importadas normalmente, mas <strong>não vinculam anúncio</strong>
+                {' '}(não têm código MLB na planilha). Confira se é esperado.
+              </p>
+              <details>
+                <summary style={{ cursor: 'pointer', fontWeight: 700, color: '#1d4ed8' }}>
+                  Ver lista{(analysisResult?.semMlbRows?.length ?? 0) < (analysisResult?.qualidade.sem_mlb ?? 0)
+                    ? ` (primeiras ${analysisResult?.semMlbRows?.length})`
+                    : ''}
+                </summary>
+                <div style={{ marginTop: 10, display: 'grid', gap: 6, maxHeight: 320, overflow: 'auto' }}>
+                  {(analysisResult?.semMlbRows ?? []).map((item) => (
+                    <div key={item.row} style={{ padding: '6px 10px', border: '1px solid #e2e8f0', borderRadius: 6, backgroundColor: '#f8fafc', fontSize: 13 }}>
+                      <strong>Linha {item.row}</strong> · id_int: {item.id_int ?? '—'} · cód: {item.code ?? '—'} · {item.title ?? '—'}
+                    </div>
+                  ))}
+                </div>
+              </details>
+            </section>
+          )}
 
           {pendingItems.length > 0 && (
             <section style={{ ...sectionStyle, borderColor: '#f59e0b', backgroundColor: '#fffbeb' }}>
