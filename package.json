@@ -3,14 +3,18 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
+    "mongo:bootstrap": "tsx scripts/bootstrapMongo.ts",
+    "mongo:seed:parte": "tsx scripts/seedMongoParteFromJson.ts",
+    "mongo:check:parte": "tsx scripts/checkMongoParteCoverage.ts",
+    "mongo:real-20": "tsx scripts/mongoReal20Parts.ts",
+    "mongo:cleanup-test": "tsx scripts/cleanupMongoTestRun.ts",
     "test": "vitest run",
     "test:watch": "vitest"
   },
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.107.0",
-    "basic-ftp": "^5.0.5",
-    "mongodb": "^6.12.0",
+    "mongodb": "^7.3.0",
     "next": "^16.2.7",
     "papaparse": "^5.5.4",
     "react": "^19.2.7",
@@ -24,6 +28,7 @@
     "@types/papaparse": "^5.5.2",
     "@types/react": "^19.2.16",
     "typescript": "^6.0.3",
+    "tsx": "^4.21.0",
     "vitest": "^4.1.9"
   }
 }
