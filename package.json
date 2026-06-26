@@ -9,11 +9,15 @@
   "dependencies": {
     "@supabase/ssr": "^0.10.3",
     "@supabase/supabase-js": "^2.107.0",
+    "basic-ftp": "^5.0.5",
+    "mongodb": "^6.12.0",
     "next": "^16.2.7",
     "papaparse": "^5.5.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "read-excel-file": "^9.2.0"
+    "read-excel-file": "^9.2.0",
+    "server-only": "^0.0.1",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^25.9.1",
