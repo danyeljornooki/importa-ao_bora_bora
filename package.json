@@ -7,6 +7,9 @@
     "mongo:seed:parte": "tsx scripts/seedMongoParteFromJson.ts",
     "mongo:check:parte": "tsx scripts/checkMongoParteCoverage.ts",
     "mongo:real-20": "tsx scripts/mongoReal20Parts.ts",
+    "import:mongo:test": "tsx scripts/mongoReal20Parts.ts",
+    "import:official": "tsx scripts/runOfficialImportWithTarget.ts",
+    "import:compare-targets": "tsx scripts/compareImportTargets.ts",
     "mongo:cleanup-test": "tsx scripts/cleanupMongoTestRun.ts",
     "test": "vitest run",
     "test:watch": "vitest"

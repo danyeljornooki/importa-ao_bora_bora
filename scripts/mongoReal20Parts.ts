@@ -1,31 +1,31 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
-import { ObjectId, MongoClient, type Db, type Document } from 'mongodb';
+import { MongoClient, type Document } from 'mongodb';
 import { getRequiredMongoEnv } from '../src/adapters/mongo/mongoEnv';
-import { MONGO_COLLECTIONS } from '../src/adapters/mongo/collectionNames';
 import { parseImportFile } from '../src/modules/importer/parseImportFile';
 import { normalizePart } from '../src/modules/importer/normalizePart';
 import { validatePart } from '../src/modules/importer/validators/validatePart';
-import { matchPart } from '../src/modules/importer/matchers/matchPart';
 import { evaluateMongoImportQualityGate } from '../src/adapters/mongo/mongoImportQualityGate';
-import type { ExistingInventoryItem } from '../src/types/inventory.types';
+import {
+  buildMongoImportMetadata,
+  createMongoImportTarget,
+} from '../src/engine/import-targets/mongoImportTarget';
+import type { ImportRunMode, ImportWriteTarget } from '../src/engine/import-targets/types';
 import type { PartCanonical } from '../src/modules/importer/schemas/part.schema';
 
-const SOURCE = 'real_20_parts_mongo_test';
 const AUTHENTICATION_URL =
   'https://n8n.driveparts.virtuaserver.com.br/webhook/mercado-livre-brasil/authentication';
 
 interface Options {
   file: string;
   integrationId: string;
-  write: boolean;
+  mode: ImportRunMode;
   allowCategoryPending: boolean;
 }
 
 interface MlContext {
   storeId: string;
   accessToken: string | null;
-  userId: number | null;
 }
 
 interface RowPlan {
@@ -37,10 +37,12 @@ interface RowPlan {
   action: 'create' | 'update' | 'skipped' | 'conflict';
   matchedId: string | null;
   categoryId: string | null;
+  category: Document | null;
   categoryFound: boolean;
   locationFound: boolean;
   locationWouldCreate: boolean;
-  storageLocationId: string | null;
+  locationId: string | null;
+  locationName: string | null;
   mlbIds: string[];
   mlbFound: number;
   mlbNoAccess: number;
@@ -63,8 +65,7 @@ const loadLocalEnv = (): void => {
   }
 };
 
-const unquote = (value: string): string =>
-  value.trim().replace(/^['"]|['"]$/g, '');
+const unquote = (value: string): string => value.trim().replace(/^['"]|['"]$/g, '');
 
 const parseArgs = (): Options => {
   const args = process.argv.slice(2);
@@ -79,16 +80,17 @@ const parseArgs = (): Options => {
   const file = valueOf('file');
   const integrationId = valueOf('integrationId');
   const write = args.includes('--write');
-  const allowCategoryPending = args.includes('--allow-category-pending');
+  const dryRun = args.includes('--dryRun') || args.includes('--dry-run');
 
   if (!file) throw new Error('Informe --file=<caminho_da_planilha>.');
   if (!integrationId) throw new Error('Informe --integrationId=<id>.');
+  if (write && dryRun) throw new Error('Use apenas um modo: --dryRun ou --write.');
 
   return {
     file: unquote(file),
     integrationId: unquote(integrationId),
-    write,
-    allowCategoryPending,
+    mode: write ? 'write' : 'dryRun',
+    allowCategoryPending: args.includes('--allow-category-pending'),
   };
 };
 
@@ -131,6 +133,12 @@ const adaptRow = (row: Record<string, unknown>): Record<string, unknown> => ({
   stock_quantity: findValue(row, ['estoque']) ?? row.stock_quantity,
 });
 
+const normalizeName = (value: unknown): string | null => {
+  const text = asString(value);
+  if (!text) return null;
+  return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+};
+
 const authenticate = async (integrationId: string): Promise<MlContext> => {
   const attempts = [
     {
@@ -167,7 +175,6 @@ const authenticate = async (integrationId: string): Promise<MlContext> => {
     return {
       storeId,
       accessToken: asString(mercadoLivre?.access_token ?? auth?.access_token),
-      userId: asNumber(mercadoLivre?.user_id),
     };
   }
 
@@ -185,7 +192,7 @@ const loadMlItem = async (
     headers: {
       Accept: 'application/json',
       Authorization: `Bearer ${accessToken}`,
-      'User-Agent': 'DriveParts-MongoTest/1.0',
+      'User-Agent': 'DriveParts-MongoImportAdapter/1.0',
     },
     signal: AbortSignal.timeout(30000),
   });
@@ -193,48 +200,8 @@ const loadMlItem = async (
   if (response.status === 403 || response.status === 401) return { status: 'no_access' };
   if (response.status === 404) return { status: 'not_found' };
   if (!response.ok) return { status: 'no_access' };
-
   return { status: 'found', data: await response.json() as Document };
 };
-
-const toExistingInventory = (doc: Document): ExistingInventoryItem & { mongoId: unknown } => ({
-  mongoId: doc._id,
-  id: String(doc.id ?? doc._id),
-  store_id: String(doc.store_id ?? ''),
-  id_int: asNumber(doc.id_int),
-  id_string: asString(doc.id_string),
-  primary_anuncio_mlb_id: asString(doc.primary_anuncio_mlb_id),
-  code: asString(doc.code),
-  tag_code: asString(doc.tag_code),
-  marketplace_name: asString(doc.marketplace_name),
-  title: asString(doc.marketplace_name),
-  storage_location_id: asString(doc.storage_location_id),
-  storage_location_name: asString(doc.storage_location_name),
-  status: asString(doc.status),
-  deleted: Boolean(doc.deleted),
-  price: asNumber(doc.price),
-  stock_quantity: asNumber(doc.stock_quantity),
-  raw: doc,
-});
-
-const normalizeName = (value: unknown): string | null => {
-  const text = asString(value);
-  if (!text) return null;
-  return text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
-};
-
-const metadataFor = (
-  testRunId: string,
-  integrationId: string,
-  fileName: string,
-  testCreated: boolean
-) => ({
-  source: SOURCE,
-  testRunId,
-  integrationId,
-  fileName,
-  testCreated,
-});
 
 const buildInventoryPayload = (input: {
   part: PartCanonical;
@@ -269,10 +236,10 @@ const buildInventoryPayload = (input: {
     part_category_name: asString(category.nome),
     mercado_libre_brasil_category_id: input.categoryId,
     catalog_attributes: category.catalogo_attributes ?? [],
-    package_height: category.altura ?? null,
-    package_width: category.largura ?? null,
-    package_length: category.comprimento ?? null,
-    package_weight: category.peso ?? null,
+    package_height: category.embalagemAltura ?? category.altura ?? null,
+    package_width: category.embalagemLargura ?? category.largura ?? null,
+    package_length: category.embalagemComprimento ?? category.comprimento ?? null,
+    package_weight: category.embalagemPeso ?? category.peso ?? null,
     shopee_category_id: category.shopee_category_id ?? null,
     shopee_brand_id: category.shopee_brand_id ?? null,
     vehicle_type: category.vehicle_type ?? null,
@@ -282,100 +249,22 @@ const buildInventoryPayload = (input: {
     images,
     image_count: images.length,
     metadata: input.metadata,
-    updated_at: new Date(),
   };
 };
 
-const ensureStorageLocation = async (
-  db: Db,
-  options: {
-    storeId: string;
-    name: string | null | undefined;
-    write: boolean;
-    metadata: Record<string, unknown>;
-  }
-): Promise<{ found: boolean; wouldCreate: boolean; id: string | null; name: string | null }> => {
-  const name = asString(options.name);
-  if (!name) return { found: false, wouldCreate: false, id: null, name: null };
-
-  const collection = db.collection(MONGO_COLLECTIONS.storageLocations);
-  const existing = await collection.findOne({
-    store_id: options.storeId,
-    name,
-    status: 'active',
-  });
-
-  if (existing) {
-    return { found: true, wouldCreate: false, id: String(existing.id ?? existing._id), name };
-  }
-
-  if (!options.write) {
-    return { found: false, wouldCreate: true, id: null, name };
-  }
-
-  const now = new Date();
-  const inserted = await collection.insertOne({
-    store_id: options.storeId,
-    name,
-    abbreviation: name,
-    status: 'active',
-    created_at: now,
-    updated_at: now,
-    location_path_names: [name],
-    location_path_slugs: [normalizeName(name)],
-    location_path_key: normalizeName(name),
-    location_path_prefixes: [normalizeName(name)],
-    location_path_text: name,
-    location_path_depth: 1,
-    location_path_character_count: name.length,
-    path_text: name,
-    level: 0,
-    metadata: options.metadata,
-  });
-
-  const id = String(inserted.insertedId);
-  await collection.updateOne(
-    { _id: inserted.insertedId },
-    {
-      $set: {
-        id,
-        path: id,
-        path_ids: [id],
-        path_items: [{
-          storage_location_id: id,
-          name,
-          abbreviation: name,
-          storage_location_type_id: null,
-          storage_location_type_name: null,
-          icon_key: null,
-          color_key: null,
-        }],
-      },
-    }
-  );
-
-  return { found: false, wouldCreate: true, id, name };
-};
-
 const buildPlan = async (
-  db: Db,
+  target: ImportWriteTarget,
   context: MlContext,
-  options: Options,
-  testRunId: string
+  options: Options
 ): Promise<RowPlan[]> => {
   const buffer = readFileSync(options.file);
-  const fileName = basename(options.file);
-  const parsed = await parseImportFile(buffer, { fileName });
-  const inventory = (await db.collection(MONGO_COLLECTIONS.inventoryItems)
-    .find({ store_id: context.storeId, deleted: { $ne: true } })
-    .limit(50000)
-    .toArray())
-    .map(toExistingInventory);
-
+  const parsed = await parseImportFile(buffer, { fileName: basename(options.file) });
   const plans: RowPlan[] = [];
+
   for (const [index, row] of parsed.rows.entries()) {
     const warnings: string[] = [];
     let part: PartCanonical;
+
     try {
       part = normalizePart(adaptRow(row), parsed.sheetName);
     } catch (error) {
@@ -388,10 +277,12 @@ const buildPlan = async (
         action: 'skipped',
         matchedId: null,
         categoryId: null,
+        category: null,
         categoryFound: false,
         locationFound: false,
         locationWouldCreate: false,
-        storageLocationId: null,
+        locationId: null,
+        locationName: null,
         mlbIds: [],
         mlbFound: 0,
         mlbNoAccess: 0,
@@ -403,19 +294,25 @@ const buildPlan = async (
 
     const validation = validatePart(part);
     warnings.push(...validation.warnings);
-    const match = validation.valid ? matchPart(part, inventory) : null;
-    if (match?.warnings.length) warnings.push(...match.warnings);
+    const match = validation.valid
+      ? await target.findInventoryItem({
+          storeId: context.storeId,
+          idInt: part.id_int,
+          idString: part.id_string,
+          code: part.code,
+          tagCode: part.tag_code,
+          identifierSearchKeys: [
+            part.code,
+            part.id_string,
+            ...(part.mlb_ids ?? []),
+          ].filter((value): value is string => typeof value === 'string' && value.trim() !== ''),
+          mlbIds: part.mlb_ids,
+        })
+      : null;
 
-    const metadata = metadataFor(testRunId, options.integrationId, fileName, true);
-    const location = await ensureStorageLocation(db, {
-      storeId: context.storeId,
-      name: part.location,
-      write: false,
-      metadata,
-    });
-    if (part.location && !location.id && !location.wouldCreate) {
-      warnings.push('location_pending');
-    }
+    const location = part.location
+      ? await target.findStorageLocation({ storeId: context.storeId, name: part.location })
+      : null;
 
     let categoryId: string | null = null;
     let category: Document | null = null;
@@ -440,7 +337,8 @@ const buildPlan = async (
     }
 
     if (categoryId) {
-      category = await db.collection(MONGO_COLLECTIONS.parte).findOne({ MLB_categoria_id: categoryId });
+      const found = await target.findPartCategory({ categoryId });
+      category = found?.raw ?? null;
       if (!category) warnings.push(`category_pending:${categoryId}`);
     } else if ((part.mlb_ids ?? []).length > 0) {
       warnings.push('category_pending');
@@ -452,17 +350,15 @@ const buildPlan = async (
       valid: validation.valid,
       errors: validation.errors,
       warnings,
-      action: !validation.valid
-        ? 'skipped'
-        : match?.action === 'conflict'
-          ? 'conflict'
-          : match?.action ?? 'create',
-      matchedId: match?.existingPart?.id ?? null,
+      action: !validation.valid ? 'skipped' : match ? 'update' : 'create',
+      matchedId: match?.id ?? null,
       categoryId,
+      category,
       categoryFound: Boolean(category),
-      locationFound: location.found,
-      locationWouldCreate: location.wouldCreate,
-      storageLocationId: location.id,
+      locationFound: Boolean(location),
+      locationWouldCreate: Boolean(part.location && !location),
+      locationId: location?.id ?? null,
+      locationName: location?.name ?? part.location ?? null,
       mlbIds: part.mlb_ids ?? [],
       mlbFound,
       mlbNoAccess,
@@ -472,120 +368,6 @@ const buildPlan = async (
   }
 
   return plans;
-};
-
-const writePlan = async (
-  db: Db,
-  context: MlContext,
-  options: Options,
-  testRunId: string,
-  plans: RowPlan[]
-) => {
-  const fileName = basename(options.file);
-  const metadata = metadataFor(testRunId, options.integrationId, fileName, true);
-  const now = new Date();
-  const run = await db.collection(MONGO_COLLECTIONS.importRuns).insertOne({
-    store_id: context.storeId,
-    status: 'completed',
-    file_name: fileName,
-    total_rows: plans.length,
-    metadata,
-    created_at: now,
-    updated_at: now,
-  });
-
-  let created = 0;
-  let updated = 0;
-  let skipped = 0;
-  let conflicts = 0;
-  let adCreatedOrUpdated = 0;
-
-  for (const plan of plans) {
-    if (!plan.valid || plan.action === 'skipped') skipped += 1;
-    if (plan.action === 'conflict') conflicts += 1;
-
-    let inventoryId: string | null = null;
-    if (plan.valid && (plan.action === 'create' || plan.action === 'update')) {
-      const location = await ensureStorageLocation(db, {
-        storeId: context.storeId,
-        name: plan.part.location,
-        write: true,
-        metadata,
-      });
-      const category = plan.categoryId
-        ? await db.collection(MONGO_COLLECTIONS.parte).findOne({ MLB_categoria_id: plan.categoryId })
-        : null;
-      const payload = buildInventoryPayload({
-        part: plan.part,
-        storeId: context.storeId,
-        locationId: location.id,
-        locationName: location.name ?? plan.part.location ?? null,
-        category,
-        categoryId: plan.categoryId,
-        metadata,
-      });
-
-      if (plan.action === 'update' && plan.matchedId) {
-        const idFilter = ObjectId.isValid(plan.matchedId)
-          ? { _id: new ObjectId(plan.matchedId) }
-          : { id: plan.matchedId };
-        await db.collection(MONGO_COLLECTIONS.inventoryItems).updateOne(idFilter, {
-          $set: { ...payload, metadata: metadataFor(testRunId, options.integrationId, fileName, false) },
-        });
-        inventoryId = plan.matchedId;
-        updated += 1;
-      } else {
-        const result = await db.collection(MONGO_COLLECTIONS.inventoryItems).insertOne({
-          ...payload,
-          created_at: now,
-        });
-        inventoryId = String(result.insertedId);
-        await db.collection(MONGO_COLLECTIONS.inventoryItems).updateOne(
-          { _id: result.insertedId },
-          { $set: { id: inventoryId } }
-        );
-        created += 1;
-      }
-
-      for (const snapshot of plan.adSnapshots) {
-        const mlbId = asString(snapshot.id);
-        if (!mlbId) continue;
-        await db.collection(MONGO_COLLECTIONS.mercadoLivreBrasilAnuncio).updateOne(
-          { integration_id: options.integrationId, mlb_id: mlbId },
-          {
-            $set: {
-              integration_id: options.integrationId,
-              peca_id: inventoryId,
-              loja_id: context.storeId,
-              mlb_id: mlbId,
-              data: snapshot,
-              metadata,
-              updated_at: now,
-            },
-            $setOnInsert: { created_at: now },
-          },
-          { upsert: true }
-        );
-        adCreatedOrUpdated += 1;
-      }
-    }
-
-    await db.collection(MONGO_COLLECTIONS.importRunItems).insertOne({
-      run_id: String(run.insertedId),
-      row: plan.row,
-      status: plan.action,
-      type: plan.action,
-      store_id: context.storeId,
-      peca_id: inventoryId,
-      mlb_id: plan.mlbIds[0] ?? null,
-      errors: plan.errors,
-      warnings: plan.warnings,
-      metadata,
-      created_at: now,
-    });
-  }
-
-  return { runId: String(run.insertedId), created, updated, skipped, conflicts, adCreatedOrUpdated };
 };
 
 const summarize = (plans: RowPlan[]) => ({
@@ -606,11 +388,141 @@ const summarize = (plans: RowPlan[]) => ({
   mlbNotFound: plans.reduce((total, plan) => total + plan.mlbNotFound, 0),
 });
 
+const writePlan = async (
+  target: ImportWriteTarget,
+  context: MlContext,
+  options: Options,
+  testRunId: string,
+  plans: RowPlan[]
+) => {
+  const dryRun = summarize(plans);
+  const importedAt = new Date();
+  const fileName = basename(options.file);
+  const baseMetadata = buildMongoImportMetadata({
+    testRunId,
+    integrationId: options.integrationId,
+    fileName,
+    importedAt,
+  }) as ReturnType<typeof buildMongoImportMetadata> & { testCreated: boolean };
+  baseMetadata.testCreated = true;
+  const run = await target.createImportRun({
+    testRunId,
+    storeId: context.storeId,
+    integrationId: options.integrationId,
+    fileName,
+    target: 'mongo',
+    status: 'completed',
+    mode: 'write',
+    totalRows: dryRun.totalRows,
+    validRows: dryRun.valid,
+    invalidRows: dryRun.invalid,
+    createdCount: dryRun.creates,
+    updatedCount: dryRun.updates,
+    skippedCount: dryRun.skipped,
+    conflictCount: dryRun.conflicts,
+    warningCount: dryRun.warnings,
+    metadata: baseMetadata,
+  });
+  const metadata = { ...baseMetadata, runId: run.id };
+
+  let created = 0;
+  let updated = 0;
+  let skipped = 0;
+  let conflicts = 0;
+  let adCreatedOrUpdated = 0;
+  let locationsCreated = 0;
+
+  for (const plan of plans) {
+    if (!plan.valid || plan.action === 'skipped') skipped += 1;
+    if (plan.action === 'conflict') conflicts += 1;
+
+    let inventoryId: string | null = null;
+    if (plan.valid && (plan.action === 'create' || plan.action === 'update')) {
+      let locationId = plan.locationId;
+      let locationName = plan.locationName;
+
+      if (plan.part.location && !locationId) {
+        try {
+          const createdLocation = await target.createStorageLocation({
+            store_id: context.storeId,
+            name: plan.part.location,
+            metadata,
+          });
+          locationId = createdLocation.id;
+          locationName = createdLocation.name;
+          locationsCreated += 1;
+        } catch {
+          plan.warnings.push('location_pending');
+        }
+      }
+
+      const payload = buildInventoryPayload({
+        part: plan.part,
+        storeId: context.storeId,
+        locationId,
+        locationName,
+        category: plan.category,
+        categoryId: plan.categoryId,
+        metadata,
+      });
+
+      if (plan.action === 'update' && plan.matchedId) {
+        await target.updateInventoryItem(plan.matchedId, {
+          ...payload,
+          metadata: { ...metadata, testCreated: false },
+        });
+        inventoryId = plan.matchedId;
+        updated += 1;
+      } else {
+        const result = await target.createInventoryItem(payload);
+        inventoryId = result.id;
+        created += 1;
+      }
+
+      for (const snapshot of plan.adSnapshots) {
+        const mlbId = asString(snapshot.id);
+        if (!mlbId) continue;
+        await target.upsertMarketplaceAd({
+          integration_id: options.integrationId,
+          loja_id: context.storeId,
+          peca_id: inventoryId,
+          mlb_id: mlbId,
+          data: snapshot,
+          metadata,
+        });
+        adCreatedOrUpdated += 1;
+      }
+    }
+
+    await target.createImportRunItem({
+      runId: run.id,
+      testRunId,
+      row: plan.row,
+      status: plan.action,
+      type: plan.action,
+      action: plan.action,
+      code: plan.part.code ?? null,
+      idInt: plan.part.id_int,
+      idString: plan.part.id_string,
+      mlbId: plan.mlbIds[0] ?? null,
+      pecaId: inventoryId,
+      messages: [],
+      warnings: plan.warnings,
+      errors: plan.errors,
+      raw: plan.part.sourceRow ?? null,
+      normalized: plan.part,
+      metadata,
+    });
+  }
+
+  return { runId: run.id, created, updated, skipped, conflicts, locationsCreated, adCreatedOrUpdated };
+};
+
 const main = async () => {
   loadLocalEnv();
   const options = parseArgs();
   const { uri, dbName } = getRequiredMongoEnv();
-  const testRunId = `mongo-real-20-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+  const testRunId = `mongo-import-adapter-v1-${new Date().toISOString().replace(/[:.]/g, '-')}`;
   const client = new MongoClient(uri, {
     connectTimeoutMS: 30000,
     serverSelectionTimeoutMS: 30000,
@@ -618,16 +530,18 @@ const main = async () => {
 
   try {
     await client.connect();
-    const db = client.db(dbName);
+    const target = createMongoImportTarget(client.db(dbName));
     const context = await authenticate(options.integrationId);
-    const plans = await buildPlan(db, context, options, testRunId);
+    const plans = await buildPlan(target, context, options);
     const dryRun = summarize(plans);
     const gate = evaluateMongoImportQualityGate(dryRun, {
-      write: options.write,
+      write: options.mode === 'write',
       allowCategoryPending: options.allowCategoryPending,
     });
+
     console.log(JSON.stringify({
-      mode: options.write ? 'write' : 'dryRun',
+      mode: options.mode,
+      target: target.name,
       testRunId,
       database: dbName,
       integrationId: options.integrationId,
@@ -639,11 +553,9 @@ const main = async () => {
       errors: plans.flatMap((plan) => plan.errors.map((error) => ({ row: plan.row, error }))),
     }, null, 2));
 
-    if (options.write) {
-      if (!gate.allowed) {
-        throw new Error(gate.errors.join(' '));
-      }
-      const write = await writePlan(db, context, options, testRunId, plans);
+    if (options.mode === 'write') {
+      if (!gate.allowed) throw new Error(gate.errors.join(' '));
+      const write = await writePlan(target, context, options, testRunId, plans);
       console.log(JSON.stringify({ write }, null, 2));
     }
   } finally {

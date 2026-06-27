@@ -26,6 +26,10 @@ export const evaluateMongoImportQualityGate = (
     return { allowed: true, warnings, errors };
   }
 
+  if (dryRun.totalRows <= 0) {
+    errors.push('Write bloqueado: arquivo sem linhas.');
+  }
+
   if (dryRun.invalid > 0 || dryRun.valid !== dryRun.totalRows) {
     errors.push('Write bloqueado: dry run possui linhas invalidas.');
   }

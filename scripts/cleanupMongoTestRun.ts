@@ -4,7 +4,11 @@ import { MongoClient } from 'mongodb';
 import { MONGO_COLLECTIONS } from '../src/adapters/mongo/collectionNames';
 import { getRequiredMongoEnv } from '../src/adapters/mongo/mongoEnv';
 
-const SOURCE = 'real_20_parts_mongo_test';
+const ALLOWED_SOURCES = [
+  'real_20_parts_mongo_test',
+  'mongo_import_adapter_v1',
+  'official_import_target_mongo',
+];
 
 const loadLocalEnv = (): void => {
   const envPath = join(process.cwd(), '.env.local');
@@ -41,7 +45,7 @@ const main = async () => {
   });
 
   const filter = {
-    'metadata.source': SOURCE,
+    'metadata.source': { $in: ALLOWED_SOURCES },
     'metadata.testRunId': testRunId,
     'metadata.testCreated': true,
   };
