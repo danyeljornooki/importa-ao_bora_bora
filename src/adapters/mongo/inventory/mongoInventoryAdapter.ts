@@ -1,10 +1,10 @@
 import 'server-only';
-import { getMongoDb } from '../../lib/mongoServer';
+import { getMongoDb } from '../../../lib/mongoServer';
 import type {
   ExistingInventoryItem,
   InventoryPersistenceAdapter,
   PersistenceActionResult,
-} from '../../types/inventory.types';
+} from '../../../types/inventory.types';
 
 /**
  * Adapter de inventario MongoDB (Drive Parts). SERVER-ONLY — usado só por API

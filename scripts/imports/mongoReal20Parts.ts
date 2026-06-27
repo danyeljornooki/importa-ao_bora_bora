@@ -1,17 +1,17 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { MongoClient, type Document } from 'mongodb';
-import { getRequiredMongoEnv } from '../src/adapters/mongo/mongoEnv';
-import { parseImportFile } from '../src/modules/importer/parseImportFile';
-import { normalizePart } from '../src/modules/importer/normalizePart';
-import { validatePart } from '../src/modules/importer/validators/validatePart';
-import { evaluateMongoImportQualityGate } from '../src/adapters/mongo/mongoImportQualityGate';
+import { getRequiredMongoEnv } from '../../src/adapters/mongo/client/mongoEnv';
+import { parseImportFile } from '../../src/modules/importer/parseImportFile';
+import { normalizePart } from '../../src/modules/importer/normalizePart';
+import { validatePart } from '../../src/modules/importer/validators/validatePart';
+import { evaluateMongoImportQualityGate } from '../../src/adapters/mongo/quality/mongoImportQualityGate';
 import {
   buildMongoImportMetadata,
   createMongoImportTarget,
-} from '../src/engine/import-targets/mongoImportTarget';
-import type { ImportRunMode, ImportWriteTarget } from '../src/engine/import-targets/types';
-import type { PartCanonical } from '../src/modules/importer/schemas/part.schema';
+} from '../../src/engine/import-targets/mongo/mongoImportTarget';
+import type { ImportRunMode, ImportWriteTarget } from '../../src/engine/import-targets/types';
+import type { PartCanonical } from '../../src/modules/importer/schemas/part.schema';
 
 const AUTHENTICATION_URL =
   'https://n8n.driveparts.virtuaserver.com.br/webhook/mercado-livre-brasil/authentication';

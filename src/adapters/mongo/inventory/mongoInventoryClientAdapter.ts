@@ -2,7 +2,7 @@ import type {
   ExistingInventoryItem,
   InventoryPersistenceAdapter,
   PersistenceActionResult,
-} from '../../types/inventory.types';
+} from '../../../types/inventory.types';
 
 /**
  * Adapter de inventário Mongo para uso no CLIENTE (browser).

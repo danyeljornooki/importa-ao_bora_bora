@@ -1,6 +1,7 @@
 export * from './adapters';
 export * from './engine/executeImportWithHistory';
 export * from './engine/executePartImportWithComplements';
+export * from './engine/import-targets/officialImportWithTarget';
 export * from './domain/part';
 export * from './services';
 export * from './planners';

@@ -1,12 +1,9 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { basename, join } from 'node:path';
 import { MongoClient } from 'mongodb';
-import { MONGO_COLLECTIONS } from '../src/adapters/mongo/collectionNames';
-import { getRequiredMongoEnv } from '../src/adapters/mongo/mongoEnv';
-import {
-  parseParteJson,
-  seedParteDocuments,
-} from '../src/adapters/mongo/parteReferenceSeed';
+import { MONGO_COLLECTIONS } from '../../src/adapters/mongo/client/collectionNames';
+import { getRequiredMongoEnv } from '../../src/adapters/mongo/client/mongoEnv';
+import { loadParteCoverageFromFile } from '../../src/adapters/mongo/parte/parteCoverage';
 
 const loadLocalEnv = (): void => {
   const envPath = join(process.cwd(), '.env.local');
@@ -35,9 +32,8 @@ const valueOf = (name: string): string | null => {
 const main = async () => {
   loadLocalEnv();
   const file = valueOf('file');
-  if (!file) throw new Error('Informe --file=<caminho/parte.json>.');
+  if (!file) throw new Error('Informe --file=<caminho/planilha.csv>.');
 
-  const docs = parseParteJson(readFileSync(file, 'utf8'));
   const { uri, dbName } = getRequiredMongoEnv();
   const client = new MongoClient(uri, {
     connectTimeoutMS: 30000,
@@ -47,31 +43,20 @@ const main = async () => {
   try {
     await client.connect();
     const db = client.db(dbName);
-    const collection = db.collection(MONGO_COLLECTIONS.parte);
-    const report = await seedParteDocuments(collection, docs, { file: basename(file) });
-    const total = await collection.countDocuments();
-    const examples = await collection
-      .find(
-        {},
-        {
-          projection: {
-            _id: 0,
-            MLB_categoria_id: 1,
-            nome: 1,
-            shopee_category_id: 1,
-            vehicle_type: 1,
-          },
-        }
-      )
-      .limit(5)
-      .toArray();
+    const report = await loadParteCoverageFromFile(
+      readFileSync(file),
+      basename(file),
+      db.collection(MONGO_COLLECTIONS.parte)
+    );
 
     console.log(JSON.stringify({
       database: dbName,
       collection: MONGO_COLLECTIONS.parte,
-      report,
-      countDocuments: total,
-      examples,
+      file: basename(file),
+      note: report.required.length === 0
+        ? 'Nenhuma categoria MLB explicita foi encontrada no arquivo. Se a planilha so possui MLB de anuncio, use o dry run com integrationId para resolver category_id via Mercado Livre.'
+        : undefined,
+      coverage: report,
     }, null, 2));
   } finally {
     await client.close();

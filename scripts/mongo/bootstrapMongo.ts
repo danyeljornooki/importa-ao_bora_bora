@@ -1,8 +1,8 @@
 import { MongoClient, type IndexSpecification } from 'mongodb';
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { getRequiredMongoEnv } from '../src/adapters/mongo/mongoEnv';
-import { schemaContracts } from '../src/schema-contracts';
+import { getRequiredMongoEnv } from '../../src/adapters/mongo/client/mongoEnv';
+import { schemaContracts } from '../../src/schema-contracts';
 
 interface CollectionReport {
   collection: string;

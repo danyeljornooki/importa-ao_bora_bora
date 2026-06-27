@@ -1,19 +1,19 @@
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { basename, dirname, join } from 'node:path';
 import { MongoClient, type Db, type Document } from 'mongodb';
-import { runImport } from '../src/engine/runImport';
-import { getRequiredMongoEnv } from '../src/adapters/mongo/mongoEnv';
-import { MONGO_COLLECTIONS } from '../src/adapters/mongo/collectionNames';
-import { normalizeImportPlanForComparison } from '../src/engine/import-targets/compare/normalizeImportPlanForComparison';
-import { compareImportTargetPlans, getComparisonExitCode } from '../src/engine/import-targets/compare/compareImportTargetPlans';
-import { resolveEnrichmentForComparison, type EnrichmentAdFetchResult } from '../src/engine/import-targets/compare/resolveEnrichmentForComparison';
-import { compareEnrichmentSnapshots } from '../src/engine/import-targets/compare/compareEnrichmentSnapshots';
-import { createMongoImportTarget } from '../src/engine/import-targets/mongoImportTarget';
-import type { ImportWriteTarget } from '../src/engine/import-targets/types';
-import type { ExistingInventoryItem, InventoryPersistenceAdapter, PersistenceActionResult } from '../src/types/inventory.types';
-import type { StorageLocation } from '../src/core/locations/location.types';
-import type { StorageLocationAdapter } from '../src/core/locations/storageLocationAdapter';
-import type { ColumnMapping } from '../src/modules/importer/suggestFieldMapping';
+import { runImport } from '../../src/engine/runImport';
+import { getRequiredMongoEnv } from '../../src/adapters/mongo/client/mongoEnv';
+import { MONGO_COLLECTIONS } from '../../src/adapters/mongo/client/collectionNames';
+import { normalizeImportPlanForComparison } from '../../src/engine/import-targets/compare/normalizeImportPlanForComparison';
+import { compareImportTargetPlans, getComparisonExitCode } from '../../src/engine/import-targets/compare/compareImportTargetPlans';
+import { resolveEnrichmentForComparison, type EnrichmentAdFetchResult } from '../../src/engine/import-targets/compare/resolveEnrichmentForComparison';
+import { compareEnrichmentSnapshots } from '../../src/engine/import-targets/compare/compareEnrichmentSnapshots';
+import { createMongoImportTarget } from '../../src/engine/import-targets/mongo/mongoImportTarget';
+import type { ImportWriteTarget } from '../../src/engine/import-targets/types';
+import type { ExistingInventoryItem, InventoryPersistenceAdapter, PersistenceActionResult } from '../../src/types/inventory.types';
+import type { StorageLocation } from '../../src/core/locations/location.types';
+import type { StorageLocationAdapter } from '../../src/core/locations/storageLocationAdapter';
+import type { ColumnMapping } from '../../src/modules/importer/suggestFieldMapping';
 
 const AUTHENTICATION_URL =
   'https://n8n.driveparts.virtuaserver.com.br/webhook/mercado-livre-brasil/authentication';
@@ -341,8 +341,8 @@ const defaultColumnMapping: ColumnMapping = {
 const main = async () => {
   loadLocalEnv();
   const options = parseArgs();
-  const { supabaseInventoryAdapter } = await import('../src/adapters/supabase/supabaseInventoryAdapter');
-  const { supabaseStorageLocationAdapter } = await import('../src/adapters/supabase/supabaseStorageLocationAdapter');
+  const { supabaseInventoryAdapter } = await import('../../src/adapters/supabase/supabaseInventoryAdapter');
+  const { supabaseStorageLocationAdapter } = await import('../../src/adapters/supabase/supabaseStorageLocationAdapter');
   const { uri, dbName } = getRequiredMongoEnv();
   const fileBuffer = toArrayBuffer(readFileSync(options.file));
   const context = await authenticateStore(options.integrationId);
@@ -358,7 +358,7 @@ const main = async () => {
     const mongoInventoryAdapter = createReadOnlyMongoInventoryAdapter(db);
     const mongoStorageAdapter = createReadOnlyMongoStorageAdapter(db);
     const mongoTarget = createMongoImportTarget(db);
-    const { supabase } = await import('../src/lib/supabaseClient');
+    const { supabase } = await import('../../src/lib/supabaseClient');
     const supabaseCategoryTarget = createSupabaseCategoryTarget(supabase);
 
     const [supabaseResult, mongoResult] = await Promise.all([

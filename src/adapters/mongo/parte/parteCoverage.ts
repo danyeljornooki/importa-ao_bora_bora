@@ -1,5 +1,5 @@
 import type { Collection, Document } from 'mongodb';
-import { parseImportFile } from '../../modules/importer/parseImportFile';
+import { parseImportFile } from '../../../modules/importer/parseImportFile';
 
 export interface ParteCoverageReport {
   required: string[];

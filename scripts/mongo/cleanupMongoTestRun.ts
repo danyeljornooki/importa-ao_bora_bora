@@ -1,8 +1,8 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { MongoClient } from 'mongodb';
-import { MONGO_COLLECTIONS } from '../src/adapters/mongo/collectionNames';
-import { getRequiredMongoEnv } from '../src/adapters/mongo/mongoEnv';
+import { MONGO_COLLECTIONS } from '../../src/adapters/mongo/client/collectionNames';
+import { getRequiredMongoEnv } from '../../src/adapters/mongo/client/mongoEnv';
 
 const ALLOWED_SOURCES = [
   'real_20_parts_mongo_test',
