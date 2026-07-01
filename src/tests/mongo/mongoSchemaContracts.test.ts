@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { MONGO_COLLECTIONS } from '../../adapters/mongo/collectionNames';
+import { MONGO_COLLECTIONS } from '../../adapters/mongo/client/collectionNames';
 import {
   inventoryItemsContract,
   mercadoLivreBrasilAnuncioContract,
+  mongoImportUpdateSnapshotsContract,
   schemaContracts,
   storageLocationsContract,
 } from '../../schema-contracts';
@@ -21,6 +22,7 @@ describe('mongo schema contracts', () => {
       MONGO_COLLECTIONS.mercadoLivreBrasilAnuncio,
       MONGO_COLLECTIONS.importRuns,
       MONGO_COLLECTIONS.importRunItems,
+      MONGO_COLLECTIONS.mongoImportUpdateSnapshots,
     ]);
   });
 
@@ -60,5 +62,13 @@ describe('mongo schema contracts', () => {
     expect(
       findIndex(storageLocationsContract.indexes, { store_id: 1, name: 1, status: 1 })
     ).toBeTruthy();
+  });
+
+  it('declares rollback snapshot indexes', () => {
+    expect(findIndex(mongoImportUpdateSnapshotsContract.indexes, { testRunId: 1, created_at: -1 })).toBeTruthy();
+    expect(findIndex(mongoImportUpdateSnapshotsContract.indexes, { runId: 1, created_at: -1 })).toBeTruthy();
+    expect(findIndex(mongoImportUpdateSnapshotsContract.indexes, { collection: 1, documentId: 1 })).toBeTruthy();
+    expect(findIndex(mongoImportUpdateSnapshotsContract.indexes, { store_id: 1, created_at: -1 })).toBeTruthy();
+    expect(findIndex(mongoImportUpdateSnapshotsContract.indexes, { rolled_back: 1 })).toBeTruthy();
   });
 });

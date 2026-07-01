@@ -1,6 +1,7 @@
 import type { Db, Document } from 'mongodb';
 import { evaluateMongoImportQualityGate } from '../../adapters/mongo/quality/mongoImportQualityGate';
 import { MONGO_COLLECTIONS } from '../../adapters/mongo/client/collectionNames';
+import { MONGO_UPDATE_SNAPSHOT_SOURCE } from '../../adapters/mongo/update-snapshots/mongoUpdateSnapshot';
 import { finalizeExecutionPlanLocations } from '../../core/locations/finalizeExecutionPlanLocations';
 import { getPartRawLocation } from '../../core/locations/getPartRawLocation';
 import type { StorageLocationAdapter } from '../../core/locations/storageLocationAdapter';
@@ -92,6 +93,10 @@ export interface OfficialImportWithTargetResult {
     storageLocationsCreated: number;
     marketplaceAdsUpserted: number;
     importRunItemsCreated: number;
+    snapshotsCreated?: number;
+    updatedDocuments?: number;
+    rollbackAvailable?: boolean;
+    rollbackCommand?: string | null;
   };
   supabaseCommit?: ExecutePartImportWithComplementsResult;
 }
@@ -512,6 +517,15 @@ const executeMongoWrite = async (
     warning_count: analysisResult.summary.warnings,
     error_count: errors.length,
   });
+  const snapshotsCreated = input.mongo?.db
+    ? await input.mongo.db.collection(MONGO_COLLECTIONS.mongoImportUpdateSnapshots).countDocuments({
+        source: MONGO_UPDATE_SNAPSHOT_SOURCE,
+        testRunId,
+      })
+    : 0;
+  const rollbackCommand = snapshotsCreated > 0
+    ? `npm run mongo:rollback-test -- --testRunId=${testRunId}`
+    : null;
 
   return {
     runId: run.id,
@@ -522,6 +536,10 @@ const executeMongoWrite = async (
       storageLocationsCreated,
       marketplaceAdsUpserted,
       importRunItemsCreated,
+      snapshotsCreated,
+      updatedDocuments: inventoryUpdated + marketplaceAdsUpserted + 1,
+      rollbackAvailable: snapshotsCreated > 0,
+      rollbackCommand,
     },
   };
 };

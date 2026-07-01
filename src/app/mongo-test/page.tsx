@@ -1,6 +1,6 @@
 import { MongoClient } from 'mongodb';
 import { AppNavigation } from '../../components/AppNavigation';
-import { getRequiredMongoEnv } from '../../adapters/mongo/mongoEnv';
+import { getRequiredMongoEnv } from '../../adapters/mongo/client/mongoEnv';
 import { schemaContracts } from '../../schema-contracts';
 
 export const dynamic = 'force-dynamic';

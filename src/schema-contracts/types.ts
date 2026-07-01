@@ -1,4 +1,4 @@
-import type { MongoCollectionName } from '../adapters/mongo/collectionNames';
+import type { MongoCollectionName } from '../adapters/mongo/client/collectionNames';
 
 export type MongoIndexDirection = 1 | -1;
 

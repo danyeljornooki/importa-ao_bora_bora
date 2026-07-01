@@ -15,7 +15,7 @@ import {
 } from '../../engine/executeImportWithHistory';
 import { supabaseImportHistoryAdapter } from '../../adapters/supabase/supabaseImportHistoryAdapter';
 import { supabaseInventoryAdapter } from '../../adapters/supabase/supabaseInventoryAdapter';
-import { mongoInventoryClientAdapter } from '../../adapters/mongo/mongoInventoryClientAdapter';
+import { mongoInventoryClientAdapter } from '../../adapters/mongo/inventory/mongoInventoryClientAdapter';
 import { supabaseStorageLocationAdapter } from '../../adapters/supabase/supabaseStorageLocationAdapter';
 
 interface PreviewItem {

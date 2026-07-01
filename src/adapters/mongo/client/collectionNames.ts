@@ -5,6 +5,7 @@ export const MONGO_COLLECTIONS = {
   mercadoLivreBrasilAnuncio: 'mercado_livre_brasil_anuncio',
   importRuns: 'import_runs',
   importRunItems: 'import_run_items',
+  mongoImportUpdateSnapshots: 'mongo_import_update_snapshots',
 } as const;
 
 export type MongoCollectionName =

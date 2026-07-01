@@ -70,9 +70,70 @@ Cleanup seguro remove documentos criados com:
 
 Ele nao reverte updates feitos em documentos preexistentes.
 
+## Update Snapshots
+
+Updates Mongo em testes controlados geram snapshot antes da alteracao.
+
+Collection:
+
+```txt
+mongo_import_update_snapshots
+```
+
+O snapshot salva:
+
+- collection alterada;
+- documentId;
+- filtro usado;
+- estado `before`;
+- patch aplicado;
+- estado `after`, quando o update termina;
+- testRunId;
+- runId;
+- integrationId;
+- storeId;
+- fileName;
+- status de rollback.
+
+Campos sensiveis sao mascarados:
+
+- `access_token`;
+- `refresh_token`;
+- `token`;
+- `authorization`;
+- `password`;
+- `client_secret`.
+
+## Rollback
+
+Rollback restaura documentos atualizados a partir dos snapshots.
+
+Comando:
+
+```powershell
+npm run mongo:rollback-test -- --testRunId=ID_AQUI
+```
+
+Regras:
+
+- exige `testRunId`;
+- nao existe rollback global;
+- so usa snapshots com `source = "mongo_update_snapshot"`;
+- restaura updates;
+- nao apaga documentos criados;
+- nao limpa `import_runs` ou `import_run_items`.
+
+## Ordem Recomendada
+
+Para desfazer um teste Mongo completo:
+
+```powershell
+npm run mongo:rollback-test -- --testRunId=ID_AQUI
+npm run mongo:cleanup-test -- --testRunId=ID_AQUI
+```
+
+Primeiro rollback restaura updates. Depois cleanup remove documentos criados em teste.
+
 ## Limitacao Atual
 
-Quando uma importacao atualiza documentos existentes no Mongo, o cleanup nao restaura o estado anterior.
-
-Proximo passo futuro: rollback por snapshot antes/depois para updates.
-
+Rollback depende de snapshots. Updates feitos antes desta sprint nao possuem snapshot e nao podem ser revertidos automaticamente.

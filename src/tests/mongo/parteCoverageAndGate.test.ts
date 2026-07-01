@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import {
   buildParteCoverageReport,
   extractMlbCategoryIdsFromRows,
-} from '../../adapters/mongo/parteCoverage';
-import { evaluateMongoImportQualityGate } from '../../adapters/mongo/mongoImportQualityGate';
+} from '../../adapters/mongo/parte/parteCoverage';
+import { evaluateMongoImportQualityGate } from '../../adapters/mongo/quality/mongoImportQualityGate';
 
 describe('parte coverage diagnostics', () => {
   it('extracts explicit MLB category ids from rows', () => {

@@ -90,6 +90,26 @@ Mercado Livre: nao.
 
 Quando usar: limpar dados criados por testes controlados.
 
+Aviso: se existirem snapshots de update nao revertidos para o `testRunId`, o cleanup mostra um alerta recomendando rollback antes. Ele nao executa rollback automaticamente.
+
+## mongo:rollback-test
+
+Comando:
+
+```powershell
+npm run mongo:rollback-test -- --testRunId=official-import-mongo-EXEMPLO
+```
+
+O que faz: restaura documentos Mongo atualizados em teste usando snapshots salvos antes do update.
+
+Grava: sim, restaura documentos e marca snapshots como `rolled_back = true`.
+
+Banco afetado: Mongo.
+
+Mercado Livre: nao.
+
+Quando usar: antes do cleanup, quando um write Mongo atualizou documentos existentes.
+
 ## mongo:seed:parte
 
 Comando:
@@ -149,4 +169,3 @@ npx tsc --noEmit --project tsconfig.json --pretty false
 O que faz: valida tipos.
 
 Grava: nao deve gerar artefatos versionados.
-

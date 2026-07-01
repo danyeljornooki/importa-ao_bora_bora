@@ -1,4 +1,4 @@
-import { MONGO_COLLECTIONS } from '../adapters/mongo/collectionNames';
+import { MONGO_COLLECTIONS } from '../adapters/mongo/client/collectionNames';
 import type { SchemaContract } from './types';
 
 export const mercadoLivreBrasilAnuncioContract: SchemaContract = {

@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { mongoInventoryAdapter } from '../../../../adapters/mongo/mongoInventoryAdapter';
+import { mongoInventoryAdapter } from '../../../../adapters/mongo/inventory/mongoInventoryAdapter';
 import { isMongoConfigured } from '../../../../lib/mongoServer';
 
 /**

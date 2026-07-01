@@ -1,5 +1,9 @@
 import { ObjectId, type Db, type Document, type Filter } from 'mongodb';
 import { MONGO_COLLECTIONS } from '../../../adapters/mongo/client/collectionNames';
+import {
+  snapshotMongoUpdate,
+  type MongoUpdateSnapshotContext,
+} from '../../../adapters/mongo/update-snapshots/mongoUpdateSnapshot';
 import type {
   ImportRunItemPayload,
   ImportRunPayload,
@@ -129,6 +133,25 @@ export const buildMongoImportRunItemDocument = (
 const idFilter = (id: string): Filter<Document> =>
   ObjectId.isValid(id) ? { _id: new ObjectId(id) } : { id };
 
+const asRecord = (value: unknown): Record<string, unknown> =>
+  value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {};
+
+const snapshotContextFrom = (
+  metadata: unknown,
+  fallback: Record<string, unknown> = {}
+): MongoUpdateSnapshotContext => {
+  const source = asRecord(metadata);
+  return {
+    testRunId: asString(source.testRunId ?? fallback.testRunId),
+    runId: asString(source.runId ?? fallback.runId),
+    integrationId: asString(source.integrationId ?? fallback.integration_id ?? fallback.integrationId),
+    storeId: asString(source.storeId ?? fallback.store_id ?? fallback.storeId),
+    fileName: asString(source.fileName ?? fallback.file_name ?? fallback.fileName),
+  };
+};
+
 const makeStorageLocationPayload = (payload: Document): Document => {
   const now = new Date();
   const name = asString(payload.name) ?? '';
@@ -185,9 +208,23 @@ export const createMongoImportTarget = (db: Db): ImportWriteTarget => ({
   },
 
   async updateImportRun(runId: string, patch: Record<string, unknown>) {
-    await db.collection(MONGO_COLLECTIONS.importRuns).updateOne(
-      idFilter(runId),
-      { $set: { ...patch, updated_at: new Date() } }
+    const filter = idFilter(runId);
+    const before = await db.collection(MONGO_COLLECTIONS.importRuns).findOne(filter);
+    const updatePatch = { ...patch, updated_at: new Date() };
+    await snapshotMongoUpdate(
+      db,
+      {
+        collection: MONGO_COLLECTIONS.importRuns,
+        filter,
+        patch: { $set: updatePatch },
+        context: snapshotContextFrom(before?.metadata, before ?? { runId }),
+      },
+      async () => {
+        await db.collection(MONGO_COLLECTIONS.importRuns).updateOne(
+          filter,
+          { $set: updatePatch }
+        );
+      }
     );
   },
 
@@ -227,9 +264,22 @@ export const createMongoImportTarget = (db: Db): ImportWriteTarget => ({
   },
 
   async updateInventoryItem(id: string, patch: Document) {
-    await db.collection(MONGO_COLLECTIONS.inventoryItems).updateOne(
-      idFilter(id),
-      { $set: { ...patch, updated_at: new Date() } }
+    const filter = idFilter(id);
+    const updatePatch = { ...patch, updated_at: new Date() };
+    await snapshotMongoUpdate(
+      db,
+      {
+        collection: MONGO_COLLECTIONS.inventoryItems,
+        filter,
+        patch: { $set: updatePatch },
+        context: snapshotContextFrom(patch.metadata, patch),
+      },
+      async () => {
+        await db.collection(MONGO_COLLECTIONS.inventoryItems).updateOne(
+          filter,
+          { $set: updatePatch }
+        );
+      }
     );
     return { id };
   },
@@ -296,9 +346,7 @@ export const createMongoImportTarget = (db: Db): ImportWriteTarget => ({
     const metadata = payload.metadata && typeof payload.metadata === 'object'
       ? { ...(payload.metadata as Record<string, unknown>), testCreated: !existing }
       : payload.metadata;
-    const result = await db.collection(MONGO_COLLECTIONS.mercadoLivreBrasilAnuncio).findOneAndUpdate(
-      filter,
-      {
+    const update = {
         $set: {
           ...payload,
           mlb_id: mlbId,
@@ -307,9 +355,31 @@ export const createMongoImportTarget = (db: Db): ImportWriteTarget => ({
           updated_at: now,
         },
         $setOnInsert: { created_at: now },
-      },
-      { upsert: true, returnDocument: 'after' }
-    );
+      };
+    let result: Document | null = null;
+    const applyUpsert = async () => {
+      result = await db.collection(MONGO_COLLECTIONS.mercadoLivreBrasilAnuncio).findOneAndUpdate(
+        filter,
+        update,
+        { upsert: true, returnDocument: 'after' }
+      );
+    };
+
+    if (existing) {
+      await snapshotMongoUpdate(
+        db,
+        {
+          collection: MONGO_COLLECTIONS.mercadoLivreBrasilAnuncio,
+          filter,
+          patch: update,
+          context: snapshotContextFrom(metadata, payload),
+        },
+        applyUpsert
+      );
+    } else {
+      await applyUpsert();
+    }
+
     return {
       id: String(result?._id ?? ''),
       mlbId,

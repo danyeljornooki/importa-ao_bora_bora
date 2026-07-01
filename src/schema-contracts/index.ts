@@ -2,6 +2,7 @@ import { importRunItemsContract } from './importRunItems.contract';
 import { importRunsContract } from './importRuns.contract';
 import { inventoryItemsContract } from './inventoryItems.contract';
 import { mercadoLivreBrasilAnuncioContract } from './mercadoLivreBrasilAnuncio.contract';
+import { mongoImportUpdateSnapshotsContract } from './mongoImportUpdateSnapshots.contract';
 import { parteContract } from './parte.contract';
 import { storageLocationsContract } from './storageLocations.contract';
 
@@ -12,6 +13,7 @@ export const schemaContracts = [
   mercadoLivreBrasilAnuncioContract,
   importRunsContract,
   importRunItemsContract,
+  mongoImportUpdateSnapshotsContract,
 ] as const;
 
 export {
@@ -19,6 +21,7 @@ export {
   importRunsContract,
   inventoryItemsContract,
   mercadoLivreBrasilAnuncioContract,
+  mongoImportUpdateSnapshotsContract,
   parteContract,
   storageLocationsContract,
 };

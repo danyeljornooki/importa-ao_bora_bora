@@ -6,6 +6,7 @@
     "mongo:bootstrap": "tsx scripts/mongo/bootstrapMongo.ts",
     "mongo:seed:parte": "tsx scripts/mongo/seedMongoParteFromJson.ts",
     "mongo:check:parte": "tsx scripts/mongo/checkMongoParteCoverage.ts",
+    "mongo:rollback-test": "tsx scripts/mongo/rollbackMongoTestRun.ts",
     "mongo:real-20": "tsx scripts/imports/mongoReal20Parts.ts",
     "import:mongo:test": "tsx scripts/imports/mongoReal20Parts.ts",
     "import:official": "tsx scripts/imports/runOfficialImportWithTarget.ts",

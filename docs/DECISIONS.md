@@ -42,7 +42,12 @@ Cleanup por `testRunId` remove documentos criados em teste.
 
 Ele nao restaura documentos preexistentes atualizados.
 
+## Updates Mongo geram snapshot antes da alteracao
+
+Todo update Mongo controlado deve salvar snapshot antes de alterar o documento.
+
+O rollback por `testRunId` usa esses snapshots para restaurar o estado anterior.
+
 ## Proximo passo futuro
 
-Criar rollback por snapshot para updates Mongo controlados.
-
+Evoluir relatorios de rollback para mostrar diff resumido por documento.

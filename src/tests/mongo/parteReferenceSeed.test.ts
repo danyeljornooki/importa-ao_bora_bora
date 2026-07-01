@@ -4,7 +4,7 @@ import {
   parseParteJson,
   seedParteDocuments,
   validateParteDocument,
-} from '../../adapters/mongo/parteReferenceSeed';
+} from '../../adapters/mongo/parte/parteReferenceSeed';
 
 describe('parte reference seed', () => {
   it('parses a JSON array export', () => {

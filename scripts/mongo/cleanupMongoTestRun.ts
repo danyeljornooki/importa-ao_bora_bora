@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { MongoClient } from 'mongodb';
 import { MONGO_COLLECTIONS } from '../../src/adapters/mongo/client/collectionNames';
 import { getRequiredMongoEnv } from '../../src/adapters/mongo/client/mongoEnv';
+import { countPendingMongoUpdateSnapshots } from '../../src/adapters/mongo/update-snapshots/mongoUpdateSnapshot';
 
 const ALLOWED_SOURCES = [
   'real_20_parts_mongo_test',
@@ -53,6 +54,12 @@ const main = async () => {
   try {
     await client.connect();
     const db = client.db(dbName);
+    const pendingSnapshots = await countPendingMongoUpdateSnapshots(db, testRunId);
+    if (pendingSnapshots > 0) {
+      console.warn(
+        'Existem updates com snapshot ainda nao revertidos. Execute mongo:rollback-test antes do cleanup se quiser desfazer updates.'
+      );
+    }
     const collections = [
       MONGO_COLLECTIONS.storageLocations,
       MONGO_COLLECTIONS.inventoryItems,
